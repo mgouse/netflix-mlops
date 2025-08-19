@@ -1,0 +1,19 @@
+stages:
+  generate_data:
+    cmd: python src/data_prep/generate_data.py
+    outs:
+    - data/raw/movies.csv
+    - data/raw/ratings.csv
+  
+  preprocess:
+    cmd: python src/data_prep/preprocess.py
+    deps:
+    - data/raw/movies.csv
+    - data/raw/ratings.csv
+    - src/data_prep/preprocess.py
+    outs:
+    - data/processed/ratings_processed.csv
+    - data/processed/user_item_matrix.csv
+    - data/processed/user_encoder.pkl
+    - data/processed/movie_encoder.pkl
+    - data/processed/metadata.pkl

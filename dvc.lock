@@ -1,0 +1,49 @@
+schema: '2.0'
+stages:
+  generate_data:
+    cmd: python src/data_prep/generate_data.py
+    outs:
+    - path: data/raw/movies.csv
+      hash: md5
+      md5: 687710d5729041a5889c7ace755afefd
+      size: 19315
+    - path: data/raw/ratings.csv
+      hash: md5
+      md5: a0ffad98bb64013540a01fb138502635
+      size: 2433363
+  preprocess:
+    cmd: python src/data_prep/preprocess.py
+    deps:
+    - path: data/raw/movies.csv
+      hash: md5
+      md5: 687710d5729041a5889c7ace755afefd
+      size: 19315
+    - path: data/raw/ratings.csv
+      hash: md5
+      md5: a0ffad98bb64013540a01fb138502635
+      size: 2433363
+    - path: src/data_prep/preprocess.py
+      hash: md5
+      md5: 80894bcb3f0cc10e811f0ee2e1390b00
+      size: 2332
+    outs:
+    - path: data/processed/metadata.pkl
+      hash: md5
+      md5: b3ae0317968457de4fff826b8b5ebd73
+      size: 81
+    - path: data/processed/movie_encoder.pkl
+      hash: md5
+      md5: 6b7c0473deb646a4a3075153a23fa2bc
+      size: 6133
+    - path: data/processed/ratings_processed.csv
+      hash: md5
+      md5: 6d537f8120c1c8aa2c49874e5b88111c
+      size: 4206539
+    - path: data/processed/user_encoder.pkl
+      hash: md5
+      md5: 4d76787c6718434d5214e2a2b3083f97
+      size: 11133
+    - path: data/processed/user_item_matrix.csv
+      hash: md5
+      md5: 82787b2ee94199bf4c1385c15ce85a89
+      size: 2007634
