@@ -1,0 +1,76 @@
+name: Model Retraining Pipeline
+
+on:
+  schedule:
+    - cron: '0 2 * * 1'  # Weekly on Monday at 2 AM
+  workflow_dispatch:
+    inputs:
+      experiment_name:
+        description: 'MLflow experiment name'
+        required: false
+        default: 'netflix_recommendation_scheduled'
+
+jobs:
+  retrain:
+    name: Retrain Model
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Cache pip packages
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements*.txt') }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install dvc mlflow
+    
+    - name: Configure DVC
+      env:
+        DVC_REMOTE_URL: ${{ secrets.DVC_REMOTE_URL }}
+      run: |
+        dvc remote modify --local origin url $DVC_REMOTE_URL
+        dvc pull
+    
+    - name: Run training pipeline
+      env:
+        MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+      run: |
+        export EXPERIMENT_NAME="${{ github.event.inputs.experiment_name || 'netflix_recommendation_scheduled' }}"
+        python src/training/train_model.py --experiment-name $EXPERIMENT_NAME
+    
+    - name: Validate new model
+      run: |
+        python src/training/validate_model.py
+    
+    - name: Compare with production model
+      run: |
+        echo "Compare metrics with current production model"
+        # python scripts/compare_models.py
+    
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@v5
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: 'chore: Update model after retraining'
+        title: '[Automated] Model Update - Run ${{ github.run_number }}'
+        body: |
+          ## Model Retraining Results
+          
+          - Run ID: ${{ github.run_id }}
+          - Experiment: ${{ github.event.inputs.experiment_name }}
+          - Timestamp: ${{ github.event.repository.updated_at }}
+          
+          Please review the model metrics and approve if satisfactory.
+        branch: model-update-${{ github.run_number }}
+        delete-branch: true
