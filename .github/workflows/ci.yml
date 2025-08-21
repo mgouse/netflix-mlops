@@ -1,4 +1,3 @@
-@'
 name: CI Pipeline
 
 on:
@@ -97,4 +96,3 @@ jobs:
           python3 -c "import yaml; yaml.safe_load(open('$file'))" || exit 1
         done
         echo "All YAML files are valid!"
-'@ | Out-File -FilePath .github\workflows\ci.yml -Encoding UTF8
