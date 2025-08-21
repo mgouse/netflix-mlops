@@ -1,0 +1,12 @@
+{
+  "timestamp": "2025-08-19T20:01:52.480325",
+  "best_model": {
+    "n_neighbors": 5,
+    "metric": "cosine",
+    "avg_distance": 0.7812707394218033
+  },
+  "validation_metrics": {
+    "catalog_coverage": 0.038,
+    "n_test_users": 5
+  }
+}

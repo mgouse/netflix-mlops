@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: netflix-api-service
+  namespace: netflix-ml
+  labels:
+    app: netflix-api
+spec:
+  type: LoadBalancer
+  selector:
+    app: netflix-api
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8000
+    name: http

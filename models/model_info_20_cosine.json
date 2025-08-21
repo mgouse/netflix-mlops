@@ -1,0 +1,15 @@
+{
+  "model_type": "KNN",
+  "n_neighbors": 20,
+  "n_neighbors_actual": 20,
+  "metric": "cosine",
+  "training_samples": 800,
+  "test_samples": 200,
+  "metrics": {
+    "avg_distance": 0.8084351202512815,
+    "coverage": 0.99625,
+    "diversity": 31.00277103360605
+  },
+  "training_time": 0.0,
+  "model_path": "D:/Netflix/models\\knn_model_20_cosine.pkl"
+}

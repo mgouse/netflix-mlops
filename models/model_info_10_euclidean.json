@@ -1,0 +1,15 @@
+{
+  "model_type": "KNN",
+  "n_neighbors": 10,
+  "n_neighbors_actual": 10,
+  "metric": "euclidean",
+  "training_samples": 800,
+  "test_samples": 200,
+  "metrics": {
+    "avg_distance": 27.308758498694502,
+    "coverage": 0.29625,
+    "diversity": 25.762384195606717
+  },
+  "training_time": 0.0,
+  "model_path": "D:/Netflix/models\\knn_model_10_euclidean.pkl"
+}

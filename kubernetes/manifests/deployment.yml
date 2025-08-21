@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netflix-api
+  namespace: netflix-ml
+  labels:
+    app: netflix-api
+    version: v1.0
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: netflix-api
+  template:
+    metadata:
+      labels:
+        app: netflix-api
+        version: v1.0
+    spec:
+      containers:
+      - name: netflix-api
+        image: netflix-api:v1.1
+        imagePullPolicy: Never  # For local development with Minikube
+        ports:
+        - containerPort: 8000
+          name: http
+        envFrom:
+        - configMapRef:
+            name: netflix-api-config
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /readiness
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+      volumes:
+      - name: logs
+        persistentVolumeClaim:
+          claimName: logs-pvc

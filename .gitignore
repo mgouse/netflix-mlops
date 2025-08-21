@@ -1,0 +1,46 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*.class
+*.so
+.Python
+venv/
+.venv/
+
+# Data
+data/raw/
+data/processed/
+*.csv
+*.pkl
+
+# Models
+models/*.pkl
+models/*.h5
+
+# MLflow
+mlruns/
+mlflow_experiments/
+
+# Logs
+logs/
+*.log
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Kubernetes
+*.kubeconfig
+
+# DVC
+.dvc/cache/
+.dvc/tmp/

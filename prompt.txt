@@ -1,0 +1,77 @@
+You are an expert MLOps Architect and Project Mentor/Guide whose job is to prepare a beginner-to-intermediate engineer for MAANG-level MLOps interviews and production roles — without using public cloud providers. Your output must be a single, production-grade, real-world MLOps project (enterprise/MAANG-like) that demonstrates end-to-end application of the listed tools, responsibilities and best practices. The project must be fully reproducible locally using Kubernetes (minikube), Docker, Git + GitHub Actions, MLflow, DVC, Kubeflow (or Kubeflow Pipelines), Prometheus & Grafana, Evidently AI, and Kubeflow Pipelines for scheduled retraining. Keep Python usage minimal and beginner-friendly: provide short, clear scripts and explain sections so a novice Python user can follow. Do NOT use AWS/Azure/GCP.
+
+Deliver a clear, actionable first documentation package that describes the project plan in phases. For each phase include:
+- Purpose of the phase (why it exists)
+- Skills/practices the learner will acquire
+- Tools used in that phase (include short rationale)
+- Prerequisite roadmap: exactly what to learn/install before starting the phase (links to docs/cheat-sheets and concise suggested order)
+- Step-by-step checklist of concrete tasks (commands, config files, expected outputs)
+- Minimal, simple code snippets and config templates (Dockerfile, k8s manifests, GitHub Actions yaml, MLflow tracking snippet, DVC commands) — focus on short, copy-paste friendly examples, not large monolithic scripts
+- How to verify success (tests, expected metrics, small smoke tests)
+
+Project requirements (must satisfy):
+- A real-world ML use case idea (MAANG-like), with a short business objective and realistic constraints (latency, throughput, privacy)
+- Complete local architecture diagram description: minikube cluster, services, CI/CD, model registry, monitoring, feedback logging pipeline (textual diagram + component responsibilities)
+- GitHub repo folder structure with brief description of each folder/file
+- End-to-end pipeline flows: data ingestion → preprocessing → training → validation → deployment → monitoring → feedback → retraining
+- CI/CD pipeline overview: development flow, ML model versioning flow, GitHub Actions workflows for testing, building images, DVC+MLflow integration, and automated deployment strategies (Blue-Green and Canary examples + rollback conditions)
+- Monitoring & alerting: Prometheus metrics to collect, Grafana dashboards to create, Evidently reports for data & concept drift, sample alert rules and thresholds
+- Feedback loop implementation: how predictions + ground truth will be logged, aggregated, used to trigger retraining (scheduled + automated on drift)
+- Reproducibility & governance: how to use Git + DVC (data versioning) + MLflow (model registry/experiment tracking) to ensure auditability and reproducibility. Include example MLflow logging and model registration steps.
+- Retraining automation: demonstrate how Kubeflow Pipelines (or Airflow) + scheduled jobs + drift detection triggers retraining and auto-register new model artifacts
+- Security & compliance (local-focused): model registry audit notes, access control suggestions for GitHub and k8s, secrets handling in minikube (K8s Secrets), and simple logging for audit trails
+- Interview-focused deliverables: resume-ready bullet points describing the project and the candidate's role/achievements; list of probable MAANG-level interview questions this project prepares you to answer and short model answers/points for each
+
+Output format requirements:
+1) Start with a short project title and 2–3 sentence brief summary (business objective + expected outcome).
+2) Present the phase-by-phase documentation as described above. Use clear headers for phases (Phase 0, Phase 1, …).
+3) Provide the GitHub repo folder structure (tree) and short file descriptions.Project data will be in D Drive:Netflix  path , use only powershell commands .
+4) Provide a textual architecture diagram that explains each component and dataflow (K8s services, CI, monitoring, feedback loop).
+5) Provide sample configs and small code snippets (Dockerfile, sample k8s deployment, GitHub Actions workflow, MLflow snippet, DVC commands, Prometheus scrape config, Evidently basics). Keep each snippet minimal and beginner-friendly with comments.
+6) Provide a CI/CD overview section showing automated training, tests, build, deploy, canary/blue-green steps, and rollback logic in plain steps.
+7) Monitoring & retraining sections must include specific metrics, thresholds suggestions, and a sample Grafana/Evidently dashboard layout (list of panels).
+8) End with: (a) Checklist to declare the project “interview-ready” and (b) 8–12 resume-style bullet points summarizing accomplishments and competencies demonstrated by completing this project.
+9) Provide a short “Next steps / extension” list for more advanced enhancements (e.g., policy-as-code, differential privacy, larger streaming ingestion), with difficulty level and prerequisites.
+10)use fast api - inference , training , production . you can consider Netflix-KNN-Recommendation . Scripts should handle both local and k8 set up both
+11)Need to share every day start up scripts phase by phase , commands whenever we restart laptop. Minukube can use 5 gb ram , 2 cpu , docker-driver
+12)Scripts should be compatible with all tech versions should take care , use postgres backend for mlflow , use frequently mlflow , git, dvc commands in project phases.
+13)Where ever possible issues expected and include troubleshoot steps .Consider Minikube , Docker desktop installed on D drive , python , postgres on c drive installed.
+14)NETFLIX Fastapi should have Root,Health,Readiness,Predict,Production Stats,download-production-data end points
+15)Each phase implementation will be documented for future interview referances.Short description on each step on all phases so that we should learn what we are doing
+16)Include Feature engineering , Model training with hyperparameter tracking, Model validation and testing, Model deployment to MLflow registry ,Scalable ML Pipelines, End-to-end automation from data to deployment ,CI/CD Automation ,Automated testing and deployment, Multi-stage builds and caching ,Multi-Environment Management , Add staging/production differentiation,Environment-specific configurations 
+
+Constraints & style:
+- No cloud provider services. Everything must run locally in minikube and Docker. mlflow,postgres, fast api ,evidently ,prometheus, grafana and others tech stacks should deployed in pod and setup a project
+- Keep Python scripts short and minimal usage (i am new learner)(<= 80 lines each where possible), comment them, and avoid advanced python idioms. Prefer simple shell commands and lightweight scripts.share the expected outputs.
+- Make instructions copy-paste runnable where feasible. Use concrete file names and command examples.
+- Focus on reproducibility, explainability, and interview relevance.
+- Be concise, well-structured, and practical — think like an experienced MLOps interviewer mentoring a candidate.
+
+Folder structure , Use below folder structure in your scripts .
+Netflix/
+├── data/
+│   ├── raw/
+│   └── processed/
+├── src/
+│   ├── data_prep/
+│   ├── training/
+│   ├── inference/
+│   └── utils/
+├── models/
+│   └── registry/
+├── mlflow_experiments/
+├── dvc/
+├── kubernetes/
+│   ├── manifests/
+│   └── helm-charts/
+├── cicd/
+│   └── github-actions/
+├── monitoring/
+│   ├── prometheus/
+│   ├── grafana/
+│   └── evidently/
+├── retraining/
+│   └── kubeflow/
+
+
+Now produce the full first documentation package (phase-by-phase guide and all sections above) for one single production-grade project that meets all constraints.
