@@ -1,4 +1,4 @@
-"""
+﻿"""
 Netflix Recommendation FastAPI Service
 """
 from fastapi import FastAPI, HTTPException, BackgroundTasks
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Netflix Recommendation API",
     description="Production-ready recommendation service",
-    version="1.0.0"
+    version="1.2.0"
 )
 
 # Prometheus metrics
