@@ -1,0 +1,65 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: drift-detection-script
+  namespace: netflix-ml
+data:
+  detect_drift.py: |
+    import json
+    import numpy as np
+    from datetime import datetime
+    
+    print(f"Running drift detection at {datetime.now()}")
+    
+    # In production: load actual prediction logs
+    # Simulate drift detection
+    drift_score = np.random.uniform(0, 1)
+    
+    print(f"Drift score: {drift_score}")
+    
+    if drift_score > 0.7:
+        print("ALERT: Significant drift detected!")
+        print("Triggering immediate retraining...")
+        # In production: trigger retraining job
+        # kubectl create job --from=cronjob/model-retraining immediate-retrain
+    else:
+        print("No significant drift detected.")
+    
+    # Save drift report
+    report = {
+        "timestamp": datetime.now().isoformat(),
+        "drift_score": drift_score,
+        "action": "retrain" if drift_score > 0.7 else "none"
+    }
+    
+    with open("/tmp/drift_report.json", "w") as f:
+        json.dump(report, f)
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: drift-detection
+  namespace: netflix-ml
+spec:
+  schedule: "0 */6 * * *"  # Every 6 hours
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: drift-detect
+            image: python:3.9-slim
+            command: ["python", "/scripts/detect_drift.py"]
+            volumeMounts:
+            - name: script
+              mountPath: /scripts
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "100m"
+          volumes:
+          - name: script
+            configMap:
+              name: drift-detection-script
+              

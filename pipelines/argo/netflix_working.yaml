@@ -1,0 +1,75 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: netflix-pipeline-
+  namespace: argo
+spec:
+  entrypoint: main-pipeline
+  serviceAccountName: default
+  
+  templates:
+  - name: main-pipeline
+    steps:
+    - - name: data-prep
+        template: prepare-data
+    - - name: train-model  
+        template: train
+    - - name: evaluate
+        template: eval
+    - - name: deploy
+        template: deploy-check
+
+  - name: prepare-data
+    container:
+      image: python:3.9
+      command: [python]
+      args:
+        - -c
+        - |
+          print("=== Preparing Netflix Data ===")
+          import json
+          data = {"users": 50000, "movies": 10000}
+          print(f"Data loaded: {data}")
+          with open('/tmp/data.json', 'w') as f:
+              json.dump(data, f)
+          print("✓ Data preparation complete")
+
+  - name: train
+    container:
+      image: python:3.9
+      command: [python]
+      args:
+        - -c
+        - |
+          print("=== Training Model ===")
+          print("Training KNN model...")
+          import time
+          time.sleep(2)  # Simulate training
+          print("Model accuracy: 0.92")
+          print("✓ Training complete")
+
+  - name: eval
+    container:
+      image: python:3.9
+      command: [python]
+      args:
+        - -c
+        - |
+          print("=== Evaluating Model ===")
+          print("Accuracy: 0.92")
+          print("Coverage: 0.45")
+          print("✓ Evaluation complete")
+
+  - name: deploy-check
+    container:
+      image: python:3.9
+      command: [python]
+      args:
+        - -c
+        - |
+          print("=== Deployment Decision ===")
+          accuracy = 0.92
+          if accuracy > 0.85:
+              print("✅ Model approved for deployment!")
+          else:
+              print("❌ Model rejected")

@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ml-infra-pvc
+  namespace: argo  # We'll run these in the Argo namespace for simplicity
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi # Allocate 2GB for MLflow and features

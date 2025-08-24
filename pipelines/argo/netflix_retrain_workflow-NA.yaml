@@ -1,0 +1,194 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: netflix-retrain-
+  namespace: argo
+spec:
+  entrypoint: ml-pipeline
+  volumes:
+  - name: workdir
+    emptyDir: {}
+    
+  templates:
+  - name: ml-pipeline
+    dag:
+      tasks:
+      - name: data-prep
+        template: data-preparation
+      - name: train-model
+        template: model-training
+        dependencies: [data-prep]
+      - name: evaluate
+        template: model-evaluation
+        dependencies: [train-model]
+      - name: deploy-check
+        template: deployment-decision
+        dependencies: [evaluate]
+
+  - name: data-preparation
+    container:
+      image: python:3.9-slim
+      command: [python, -c]
+      args:
+        - |
+          import json
+          import numpy as np
+          from datetime import datetime
+          
+          print("=== Data Preparation Started ===")
+          print(f"Timestamp: {datetime.now()}")
+          
+          # Simulate data loading and validation
+          data_stats = {
+              "total_users": 50000,
+              "total_movies": 10000,
+              "total_ratings": 1000000,
+              "data_quality": "PASS",
+              "missing_values": 0.02
+          }
+          
+          print(f"Data Statistics: {json.dumps(data_stats, indent=2)}")
+          
+          # Save stats for next step
+          with open('/work/data_stats.json', 'w') as f:
+              json.dump(data_stats, f)
+          
+          print("✓ Data preparation completed")
+      volumeMounts:
+      - name: workdir
+        mountPath: /work
+
+  - name: model-training
+    container:
+      image: python:3.9-slim
+      command: [sh, -c]
+      args:
+        - |
+          pip install scikit-learn numpy pandas
+          python -c "
+          import pickle
+          import numpy as np
+          import json
+          from sklearn.neighbors import NearestNeighbors
+          from datetime import datetime
+          
+          print('=== Model Training Started ===')
+          print(f'Timestamp: {datetime.now()}')
+          
+          # Load data stats
+          with open('/work/data_stats.json', 'r') as f:
+              data_stats = json.load(f)
+          
+          print(f'Training on {data_stats[\"total_users\"]} users')
+          
+          # Simulate training
+          print('Training KNN model...')
+          X = np.random.rand(1000, 500)
+          model = NearestNeighbors(n_neighbors=15, metric='cosine')
+          model.fit(X)
+          
+          # Save model
+          with open('/work/model.pkl', 'wb') as f:
+              pickle.dump(model, f)
+          
+          # Save training metadata
+          training_info = {
+              'model_type': 'KNN',
+              'n_neighbors': 15,
+              'metric': 'cosine',
+              'training_samples': 1000,
+              'features': 500,
+              'training_time': '45 seconds'
+          }
+          
+          with open('/work/training_info.json', 'w') as f:
+              json.dump(training_info, f)
+          
+          print('✓ Model training completed')
+          print(f'Model info: {json.dumps(training_info, indent=2)}')
+          "
+      volumeMounts:
+      - name: workdir
+        mountPath: /work
+
+  - name: model-evaluation
+    container:
+      image: python:3.9-slim
+      command: [python, -c]
+      args:
+        - |
+          import json
+          import numpy as np
+          from datetime import datetime
+          
+          print("=== Model Evaluation Started ===")
+          print(f"Timestamp: {datetime.now()}")
+          
+          # Simulate model evaluation
+          np.random.seed(42)
+          accuracy = np.random.uniform(0.88, 0.95)
+          coverage = np.random.uniform(0.45, 0.55)
+          latency_ms = np.random.uniform(10, 30)
+          
+          metrics = {
+              "accuracy": round(accuracy, 3),
+              "coverage": round(coverage, 3),
+              "latency_ms": round(latency_ms, 1),
+              "precision": round(np.random.uniform(0.85, 0.92), 3),
+              "recall": round(np.random.uniform(0.80, 0.90), 3),
+              "f1_score": round(np.random.uniform(0.82, 0.91), 3)
+          }
+          
+          print(f"Evaluation Metrics: {json.dumps(metrics, indent=2)}")
+          
+          # Save metrics
+          with open('/work/metrics.json', 'w') as f:
+              json.dump(metrics, f)
+          
+          print("✓ Model evaluation completed")
+      volumeMounts:
+      - name: workdir
+        mountPath: /work
+
+  - name: deployment-decision
+    container:
+      image: python:3.9-slim
+      command: [python, -c]
+      args:
+        - |
+          import json
+          from datetime import datetime
+          
+          print("=== Deployment Decision ===")
+          print(f"Timestamp: {datetime.now()}")
+          
+          # Load metrics
+          with open('/work/metrics.json', 'r') as f:
+              metrics = json.load(f)
+          
+          print(f"Model Performance:")
+          print(f"  Accuracy: {metrics['accuracy']}")
+          print(f"  Coverage: {metrics['coverage']}")
+          print(f"  Latency: {metrics['latency_ms']}ms")
+          
+          # Decision logic
+          if metrics['accuracy'] > 0.85 and metrics['latency_ms'] < 50:
+              print("\n✅ APPROVED for deployment")
+              print("Deployment command would be:")
+              print("kubectl set image deployment/netflix-api netflix-api=netflix-api:v2.0 -n netflix-ml")
+          else:
+              print("\n❌ REJECTED - Performance below threshold")
+              print(f"Required: accuracy > 0.85, latency < 50ms")
+          
+          # Save decision
+          decision = {
+              "approved": metrics['accuracy'] > 0.85,
+              "reason": "Meets performance criteria" if metrics['accuracy'] > 0.85 else "Below threshold",
+              "timestamp": datetime.now().isoformat()
+          }
+          
+          with open('/work/decision.json', 'w') as f:
+              json.dump(decision, f)
+      volumeMounts:
+      - name: workdir
+        mountPath: /work

@@ -1,0 +1,44 @@
+﻿apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlflow-server
+  namespace: argo
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: mlflow-server }
+  template:
+    metadata:
+      labels: { app: mlflow-server }
+    spec:
+      containers:
+      - name: mlflow
+        image: python:3.9
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            pip install mlflow psycopg2-binary
+            mlflow server \
+              --backend-store-uri postgresql://postgres:postgres@192.168.49.2:5432/mlflow_db \
+              --default-artifact-root /mlflow_artifacts \
+              --host 0.0.0.0
+        ports:
+        - containerPort: 5000
+        volumeMounts:
+        - name: mlflow-artifacts
+          mountPath: /mlflow_artifacts
+      volumes:
+      - name: mlflow-artifacts
+        persistentVolumeClaim:
+          claimName: ml-infra-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlflow-service
+  namespace: argo
+spec:
+  selector: { app: mlflow-server }
+  ports:
+  - port: 5000
+    targetPort: 5000

@@ -1,0 +1,134 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: retrain-script-complete
+  namespace: netflix-ml
+data:
+  retrain_complete.py: |
+    import os
+    import pickle
+    import numpy as np
+    import pandas as pd
+    from datetime import datetime
+    from sklearn.neighbors import NearestNeighbors
+    
+    def main():
+        print(f"=== Netflix Model Retraining Started at {datetime.now()} ===")
+        
+        try:
+            # Step 1: Load Data
+            print("\n1. Loading data...")
+            # In production: Load your actual data
+            # For demo: Create dummy data
+            n_users = 1000
+            n_movies = 500
+            user_item_matrix = np.random.rand(n_users, n_movies)
+            print(f"   Data shape: {user_item_matrix.shape}")
+            
+            # Step 2: Train Model
+            print("\n2. Training model...")
+            n_neighbors = int(os.getenv('N_NEIGHBORS', '10'))
+            model = NearestNeighbors(n_neighbors=n_neighbors, metric='cosine')
+            model.fit(user_item_matrix)
+            print(f"   Model trained with n_neighbors={n_neighbors}")
+            
+            # Step 3: Evaluate Model
+            print("\n3. Evaluating model...")
+            # Simulate evaluation metrics
+            accuracy = np.random.uniform(0.82, 0.95)
+            coverage = np.random.uniform(0.40, 0.60)
+            print(f"   Accuracy: {accuracy:.3f}")
+            print(f"   Coverage: {coverage:.3f}")
+            
+            # Step 4: MLflow Tracking (Optional - will work if MLflow is available)
+            try:
+                import mlflow
+                import mlflow.sklearn
+                
+                # For local MLflow (since we don't have MLflow service in K8s)
+                mlflow.set_tracking_uri("file:///tmp/mlruns")
+                mlflow.set_experiment("netflix_retraining")
+                
+                with mlflow.start_run():
+                    mlflow.log_param("n_neighbors", n_neighbors)
+                    mlflow.log_metric("accuracy", accuracy)
+                    mlflow.log_metric("coverage", coverage)
+                    mlflow.sklearn.log_model(model, "model")
+                    print("   Logged to MLflow")
+            except Exception as e:
+                print(f"   MLflow logging skipped: {e}")
+            
+            # Step 5: Save Model
+            print("\n4. Saving model...")
+            model_path = "/tmp/retrained_model.pkl"
+            with open(model_path, 'wb') as f:
+                pickle.dump(model, f)
+            print(f"   Model saved to {model_path}")
+            
+            # Step 6: Deployment Decision
+            print("\n5. Deployment decision...")
+            if accuracy > 0.85:
+                print("   ✓ Model meets threshold. Ready for deployment!")
+                
+                # In production: Update deployment
+                # For now, just print the command
+                deploy_cmd = f"kubectl set image deployment/netflix-api netflix-api=mgouse/netflix-mlops:retrain-{datetime.now().strftime('%Y%m%d')} -n netflix-ml"
+                print(f"   Deployment command: {deploy_cmd}")
+                
+                # Uncomment to actually deploy:
+                # os.system(deploy_cmd)
+            else:
+                print("   ✗ Model below threshold. Skipping deployment.")
+            
+            print(f"\n=== Retraining Completed Successfully ===")
+            
+        except Exception as e:
+            print(f"\nERROR: Retraining failed: {e}")
+            raise
+    
+    if __name__ == "__main__":
+        main()
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: model-retraining-complete
+  namespace: netflix-ml
+spec:
+  schedule: "0 2 * * 1"  # Every Monday at 2 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: retrain
+            image: python:3.9-slim
+            command: ["/bin/bash", "-c"]
+            args:
+              - |
+                # Install required packages
+                pip install pandas numpy scikit-learn
+                
+                # Try to install MLflow (optional)
+                pip install mlflow || echo "MLflow installation failed, continuing without it"
+                
+                # Run the training script
+                python /scripts/retrain_complete.py
+            env:
+            - name: N_NEIGHBORS
+              value: "15"
+            volumeMounts:
+            - name: script
+              mountPath: /scripts
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "250m"
+              limits:
+                memory: "1Gi"
+                cpu: "500m"
+          volumes:
+          - name: script
+            configMap:
+              name: retrain-script-complete

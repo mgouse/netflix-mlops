@@ -1,0 +1,25 @@
+name: Trigger Argo Retraining Pipeline
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/**' # Only trigger on source code changes
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  trigger-argo-workflow:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Trigger Argo Workflow
+      run: |
+        # In a real-world scenario, the Argo server would be exposed via an Ingress
+        # For our local setup, we simulate the call. The real trigger would be
+        # a `kubectl create` command after checking out the code.
+        echo "Simulating trigger of Argo workflow..."
+        echo "In a production setup, this step would use curl or the argo CLI to submit the workflow:"
+        echo "  argo submit --serviceaccount github-actions -n argo pipelines/argo/netflix_ml_pipeline_phase8.yaml"
+        echo "--------------------------------------------------------"
+        echo "Since GitHub Actions cannot access your local Minikube,"
+        echo "you should now run the following command manually to simulate the trigger:"
+        echo "  kubectl create -f pipelines/argo/netflix_ml_pipeline_phase8.yaml"

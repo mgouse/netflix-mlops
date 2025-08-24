@@ -1,0 +1,24 @@
+name: Deployment Notification
+
+on:
+  workflow_run:
+    workflows: ["CD Pipeline"]
+    types:
+      - completed
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Create deployment summary
+      run: |
+        if [ "${{ github.event.workflow_run.conclusion }}" == "success" ]; then
+          echo "✅ Deployment Successful!" > summary.txt
+          echo "Image: ${{ secrets.DOCKER_USERNAME }}/netflix-api:${{ github.event.workflow_run.head_sha }}" >> summary.txt
+        else
+          echo "❌ Deployment Failed!" > summary.txt
+        fi
+        
+        echo "Time: $(date)" >> summary.txt
+        echo "Commit: ${{ github.event.workflow_run.head_sha }}" >> summary.txt
+        cat summary.txt

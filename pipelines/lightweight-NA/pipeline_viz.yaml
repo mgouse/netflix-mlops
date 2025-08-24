@@ -1,0 +1,52 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pipeline-definition
+  namespace: netflix-ml
+data:
+  netflix_pipeline.yaml: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: WorkflowTemplate
+    metadata:
+      name: netflix-retraining-pipeline
+    spec:
+      entrypoint: main
+      templates:
+      - name: main
+        dag:
+          tasks:
+          - name: load-data
+            template: load-data
+          - name: train-model
+            template: train-model
+            dependencies: [load-data]
+          - name: evaluate-model
+            template: evaluate-model
+            dependencies: [train-model]
+          - name: deploy-decision
+            template: deploy-decision
+            dependencies: [evaluate-model]
+      
+      - name: load-data
+        container:
+          image: python:3.9-slim
+          command: [echo]
+          args: ["Loading Netflix data..."]
+      
+      - name: train-model
+        container:
+          image: python:3.9-slim
+          command: [echo]
+          args: ["Training KNN model..."]
+      
+      - name: evaluate-model
+        container:
+          image: python:3.9-slim
+          command: [echo]
+          args: ["Evaluating model performance..."]
+      
+      - name: deploy-decision
+        container:
+          image: python:3.9-slim
+          command: [echo]
+          args: ["Making deployment decision..."]
