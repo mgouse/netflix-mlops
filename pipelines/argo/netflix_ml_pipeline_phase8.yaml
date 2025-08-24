@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
-  generateName: netflix-ml-prod-v2-
+  generateName: netflix-ml-prod-
   namespace: argo
 spec:
   entrypoint: ml-pipeline
@@ -28,17 +28,15 @@ spec:
         template: evaluate-and-register
         dependencies: [train-model]
 
-  # Fixed Step: Initialize a simple SQLite feature store
+  # New Step: Initialize a simple SQLite feature store
   - name: setup-fs
     container:
       image: python:3.9
-      command: [sh, -c] # Use sh -c to run multiple commands
+      command: [python, -c]
       args:
         - |
-          pip install pandas
-          python -c "
           import sqlite3, pandas as pd
-          print('Initializing Feature Store (SQLite)...')
+          print("Initializing Feature Store (SQLite)...")
           conn = sqlite3.connect('/work/feature_store.db')
           # Create a dummy feature table
           features_df = pd.DataFrame({
@@ -48,43 +46,39 @@ spec:
           })
           features_df.to_sql('user_features', conn, if_exists='replace', index=False)
           conn.close()
-          print('✓ Feature Store initialized.')
-          "
+          print("✓ Feature Store initialized.")
       volumeMounts:
       - name: workdir
         mountPath: /work
 
-  # Fixed Step: Fetch features from our store
+  # Updated Step: Fetch features from our store
   - name: fetch-features
     container:
       image: python:3.9
-      command: [sh, -c] # Use sh -c
+      command: [python, -c]
       args:
         - |
-          pip install pandas
-          python -c "
           import sqlite3, pandas as pd
-          print('Fetching features from Feature Store...')
+          print("Fetching features from Feature Store...")
           conn = sqlite3.connect('/work/feature_store.db')
-          df = pd.read_sql_query('SELECT * FROM user_features LIMIT 10', conn)
-          print('Sample features:')
+          df = pd.read_sql_query("SELECT * FROM user_features LIMIT 10", conn)
+          print("Sample features:")
           print(df.head())
           df.to_csv('/work/training_data.csv', index=False)
           conn.close()
-          print('✓ Features fetched and saved.')
-          "
+          print("✓ Features fetched and saved.")
       volumeMounts:
       - name: workdir
         mountPath: /work
 
-  # Fixed Step: Train and log to the in-cluster MLflow
+  # Updated Step: Train and log to the in-cluster MLflow
   - name: train-model
     container:
-      image: python:3.9 # Standard python image is fine
-      command: [sh, -c] # Use sh -c
+      image: continuumio/miniconda3 # Has numpy/sklearn pre-installed
+      command: [/bin/bash, -c]
       args:
         - |
-          pip install mlflow==2.8.0 pandas scikit-learn
+          pip install mlflow==2.8.0 pandas
           python -c "
           import mlflow, pickle, pandas as pd
           from sklearn.ensemble import RandomForestRegressor
@@ -117,14 +111,14 @@ spec:
       - name: workdir
         mountPath: /work
 
-  # Fixed Step: Evaluate and register the model
+  # Updated Step: Evaluate and register the model
   - name: evaluate-and-register
     container:
-      image: python:3.9 # Standard python image is fine
-      command: [sh, -c] # Use sh -c
+      image: continuumio/miniconda3
+      command: [/bin/bash, -c]
       args:
         - |
-          pip install mlflow==2.8.0 pandas scikit-learn
+          pip install mlflow==2.8.0 pandas
           python -c "
           import mlflow, json
           from sklearn.metrics import mean_squared_error

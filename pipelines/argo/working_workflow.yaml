@@ -1,0 +1,77 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: netflix-ml-working-
+  namespace: argo
+spec:
+  entrypoint: ml-pipeline
+  serviceAccountName: default
+  
+  templates:
+  - name: ml-pipeline
+    dag:
+      tasks:
+      - name: setup-feature-store
+        template: setup-fs
+      - name: fetch-features
+        template: fetch-features
+        dependencies: [setup-feature-store]
+      - name: train-model
+        template: train-model
+        dependencies: [fetch-features]
+      - name: evaluate-and-register
+        template: evaluate-and-register
+        dependencies: [train-model]
+
+  - name: setup-fs
+    container:
+      image: python:3.9
+      command: [sh, -c]
+      args:
+        - |
+          pip install pandas
+          python -c "
+          import sqlite3, pandas as pd
+          print('Initializing Feature Store...')
+          # Your Python code here
+          "
+
+  - name: fetch-features
+    container:
+      image: python:3.9
+      command: [sh, -c]
+      args:
+        - |
+          pip install pandas
+          python -c "
+          import sqlite3, pandas as pd
+          print('Fetching features...')
+          # Your Python code here
+          "
+
+  - name: train-model
+    container:
+      image: python:3.9
+      command: [sh, -c]
+      args:
+        - |
+          pip install mlflow pandas scikit-learn
+          python -c "
+          import mlflow, pandas
+          from sklearn.ensemble import RandomForestRegressor
+          print('Training model...')
+          # Your Python code here
+          "
+
+  - name: evaluate-and-register
+    container:
+      image: python:3.9
+      command: [sh, -c]
+      args:
+        - |
+          pip install mlflow pandas scikit-learn
+          python -c "
+          import mlflow, pandas
+          print('Evaluating and registering model...')
+          # Your Python code here
+          "
