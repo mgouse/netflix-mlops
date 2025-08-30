@@ -1,0 +1,22 @@
+  # ===============================================================
+  # JOB 4: VALIDATE KUBERNETES MANIFESTS
+  # Purpose: Ensure Kubernetes YAML files are syntactically correct.
+  # Runs in parallel with other jobs.
+  # ===============================================================
+  validate-k8s:
+    name: Validate Kubernetes Manifests
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: pip install pyyaml
+
+    - name: Run validation script
+      run: python scripts/ci/validate_k8s_manifests.py
