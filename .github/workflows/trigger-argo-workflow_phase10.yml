@@ -1,0 +1,149 @@
+﻿name: Trigger Netflix Phase 8 Argo Workflow
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      workflow_name:
+        description: 'Name of the workflow to trigger'
+        required: true
+        default: 'netflix-phase8-complete'
+      run_name:
+        description: 'Custom run name (optional)'
+        required: false
+
+jobs:
+  trigger-argo-workflow:
+    runs-on: self-hosted  # Use self-hosted runner with kubectl access
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Submit Argo Workflow
+      run: |
+        # Set workflow name from input or default
+        WORKFLOW_NAME="${{ github.event.inputs.workflow_name || 'netflix-phase8-complete' }}"
+        
+        # Generate unique run name if not provided
+        if [ -z "${{ github.event.inputs.run_name }}" ]; then
+          RUN_NAME="github-action-$(date +%s)"
+        else
+          RUN_NAME="${{ github.event.inputs.run_name }}"
+        fi
+        
+        echo "Submitting Argo workflow: $WORKFLOW_NAME"
+        echo "Run name: $RUN_NAME"
+        
+        # Submit the workflow
+        kubectl create -f workflows/netflix-phase8-complete.yaml -n argo
+        
+        # Get the workflow name
+        WORKFLOW_ID=$(kubectl get workflows -n argo --sort-by='.metadata.creationTimestamp' -o jsonpath='{.items[-1:].metadata.name}')
+        echo "Workflow submitted: $WORKFLOW_ID"
+        
+        # Save workflow ID for next steps
+        echo "WORKFLOW_ID=$WORKFLOW_ID" >> $GITHUB_ENV
+        
+    - name: Monitor Workflow Status
+      run: |
+        echo "Monitoring workflow: ${{ env.WORKFLOW_ID }}"
+        
+        # Wait for workflow to complete (max 30 minutes)
+        timeout=1800
+        start_time=$(date +%s)
+        
+        while true; do
+          current_time=$(date +%s)
+          elapsed=$((current_time - start_time))
+          
+          if [ $elapsed -gt $timeout ]; then
+            echo "Timeout reached after $timeout seconds"
+            exit 1
+          fi
+          
+          STATUS=$(kubectl get workflow ${{ env.WORKFLOW_ID }} -n argo -o jsonpath='{.status.phase}')
+          
+          echo "Workflow status: $STATUS (elapsed: ${elapsed}s)"
+          
+          case $STATUS in
+            "Succeeded")
+              echo "✅ Workflow completed successfully!"
+              break
+              ;;
+            "Failed"|"Error")
+              echo "❌ Workflow failed!"
+              kubectl logs -n argo -l workflows.argoproj.io/workflow=${{ env.WORKFLOW_ID }} --tail=50
+              exit 1
+              ;;
+            "Running")
+              sleep 10
+              ;;
+            *)
+              sleep 5
+              ;;
+          esac
+        done
+        
+    - name: Get MLflow Run Details
+      run: |
+        echo "Fetching MLflow run details from workflow logs..."
+        
+        # Extract MLflow run ID from workflow logs
+        MLFLOW_RUN_ID=$(kubectl logs -n argo -l workflows.argoproj.io/workflow=${{ env.WORKFLOW_ID }} | grep -oP 'Successfully logged run: \K\S+' | tail -1)
+        
+        if [ -n "$MLFLOW_RUN_ID" ]; then
+          echo "MLflow Run ID: $MLFLOW_RUN_ID"
+          echo "MLFLOW_RUN_ID=$MLFLOW_RUN_ID" >> $GITHUB_ENV
+        else
+          echo "⚠️ Could not extract MLflow run ID from logs"
+        fi
+        
+    - name: Display Results
+      run: |
+        echo "🎉 Netflix Phase 8 Workflow Execution Summary"
+        echo "=========================================="
+        echo "Workflow ID: ${{ env.WORKFLOW_ID }}"
+        echo "Status: ✅ Succeeded"
+        
+        if [ -n "${{ env.MLFLOW_RUN_ID }}" ]; then
+          echo "MLflow Run ID: ${{ env.MLFLOW_RUN_ID }}"
+          echo ""
+          echo "📊 View in MLflow UI:"
+          echo "1. Port-forward to cluster MLflow:"
+          echo "   kubectl port-forward -n argo svc/mlflow-service 5000:5000"
+          echo ""
+          echo "2. Open MLflow UI:"
+          echo "   http://localhost:5000"
+          echo ""
+          echo "3. Look for experiment: 'Netflix-Phase8-Complete'"
+          echo "4. Find run with ID: ${{ env.MLFLOW_RUN_ID }}"
+        else
+          echo "⚠️ MLflow run ID not found in logs"
+          echo "Please check the workflow logs manually:"
+          echo "kubectl logs -n argo -l workflows.argoproj.io/workflow=${{ env.WORKFLOW_ID }}"
+        fi
+        
+    - name: Workflow Artifacts
+      run: |
+        echo "Creating workflow artifacts..."
+        
+        # Save workflow logs
+        kubectl logs -n argo -l workflows.argoproj.io/workflow=${{ env.WORKFLOW_ID }} > workflow-logs.txt
+        
+        # Save workflow manifest
+        kubectl get workflow ${{ env.WORKFLOW_ID }} -n argo -o yaml > workflow-manifest.yaml
+        
+        echo "Artifacts saved:"
+        echo "- workflow-logs.txt"
+        echo "- workflow-manifest.yaml"
+        
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: workflow-execution-${{ env.WORKFLOW_ID }}
+        path: |
+          workflow-logs.txt
+          workflow-manifest.yaml
+        retention-days: 30
