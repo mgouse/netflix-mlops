@@ -1,4 +1,4 @@
-﻿name: Trigger Netflix Phase 8 Argo Workflow
+﻿name: Trigger Netflix Fixed Phase 10 Argo Workflow
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
       workflow_name:
         description: 'Name of the workflow to trigger'
         required: true
-        default: 'netflix-phase8-complete'
+        default: 'netflix-ml-pipeline-fixed'
       run_name:
         description: 'Custom run name (optional)'
         required: false
@@ -24,7 +24,7 @@ jobs:
     - name: Submit Argo Workflow
       run: |
         # Set workflow name from input or default
-        WORKFLOW_NAME="${{ github.event.inputs.workflow_name || 'netflix-phase8-complete' }}"
+        WORKFLOW_NAME="${{ github.event.inputs.workflow_name || 'netflix-ml-pipeline-fixed' }}"
         
         # Generate unique run name if not provided
         if [ -z "${{ github.event.inputs.run_name }}" ]; then
@@ -36,8 +36,8 @@ jobs:
         echo "Submitting Argo workflow: $WORKFLOW_NAME"
         echo "Run name: $RUN_NAME"
         
-        # Submit the workflow
-        kubectl create -f workflows/netflix-phase8-complete.yaml -n argo
+        # Submit the workflow - using the correct path
+        kubectl create -f .github/workflows/netflix-ml-pipeline-fixed_phase10.yml -n argo
         
         # Get the workflow name
         WORKFLOW_ID=$(kubectl get workflows -n argo --sort-by='.metadata.creationTimestamp' -o jsonpath='{.items[-1:].metadata.name}')
@@ -102,8 +102,8 @@ jobs:
         
     - name: Display Results
       run: |
-        echo "🎉 Netflix Phase 8 Workflow Execution Summary"
-        echo "=========================================="
+        echo "🎉 Netflix Fixed Phase 10 Workflow Execution Summary"
+        echo "=================================================="
         echo "Workflow ID: ${{ env.WORKFLOW_ID }}"
         echo "Status: ✅ Succeeded"
         
@@ -117,7 +117,7 @@ jobs:
           echo "2. Open MLflow UI:"
           echo "   http://localhost:5000"
           echo ""
-          echo "3. Look for experiment: 'Netflix-Phase8-Complete'"
+          echo "3. Look for experiment: 'Netflix-Retraining-Pipeline'"
           echo "4. Find run with ID: ${{ env.MLFLOW_RUN_ID }}"
         else
           echo "⚠️ MLflow run ID not found in logs"
