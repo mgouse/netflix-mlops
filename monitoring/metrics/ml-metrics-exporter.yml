@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ml-metrics-exporter
+  namespace: monitoring
+  labels:
+    app: ml-metrics-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ml-metrics-exporter
+  template:
+    metadata:
+      labels:
+        app: ml-metrics-exporter
+    spec:
+      containers:
+      - name: metrics-exporter
+        image: netflix-ml-metrics:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8000
+          name: metrics
+        env:
+        - name: METRICS_PORT
+          value: "8000"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ml-metrics-exporter
+  namespace: monitoring
+  labels:
+    app: ml-metrics-exporter
+spec:
+  selector:
+    app: ml-metrics-exporter
+  ports:
+  - port: 8000
+    targetPort: 8000
+    name: metrics

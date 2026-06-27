@@ -1,0 +1,360 @@
+﻿apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: netflix-github-actions-
+  namespace: argo
+  annotations:
+    workflows.argoproj.io/description: "Netflix ML Pipeline triggered by GitHub Actions"
+    workflows.argoproj.io/tags: "ml,netflix,github-actions"
+spec:
+  entrypoint: github-actions-pipeline
+  arguments:
+    parameters:
+    - name: github_run_id
+      value: "{{ workflow.annotations['github_run_id'] }}"
+    - name: github_actor
+      value: "{{ workflow.annotations['github_actor'] }}"
+    - name: github_ref
+      value: "{{ workflow.annotations['github_ref'] }}"
+      
+  serviceAccountName: default
+  volumeClaimTemplates:
+  - metadata:
+      name: workdir
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 1Gi
+          
+  templates:
+  - name: github-actions-pipeline
+    dag:
+      tasks:
+      - name: setup-github-metadata
+        template: github-metadata
+      - name: data-preparation
+        template: prepare-data
+        dependencies: [setup-github-metadata]
+      - name: model-training
+        template: train-model
+        dependencies: [data-preparation]
+      - name: model-evaluation
+        template: evaluate-model
+        dependencies: [model-training]
+      - name: model-registration
+        template: register-model
+        dependencies: [model-evaluation]
+      - name: notification
+        template: send-notification
+        dependencies: [model-registration]
+        
+  - name: github-metadata
+    container:
+      image: python:3.9-slim
+      command: ["/bin/bash", "-c"]
+      args:
+        - |
+          pip install mlflow==2.10.0 requests
+          
+          python -c "
+          import mlflow
+          import os
+          import time
+          from datetime import datetime
+          
+          # Set MLflow tracking URI
+          mlflow.set_tracking_uri('http://mlflow-service.argo.svc.cluster.local:5000')
+          mlflow.set_experiment('Netflix-GitHub-Actions')
+          
+          with mlflow.start_run(run_name='github-metadata') as run:
+              # Log GitHub Actions metadata
+              github_run_id = '{{ workflow.parameters.github_run_id }}'
+              github_actor = '{{ workflow.parameters.github_actor }}'
+              github_ref = '{{ workflow.parameters.github_ref }}'
+              
+              mlflow.log_param('trigger_source', 'github_actions')
+              mlflow.log_param('github_run_id', github_run_id)
+              mlflow.log_param('github_actor', github_actor)
+              mlflow.log_param('github_ref', github_ref)
+              mlflow.log_param('execution_time', datetime.now().isoformat())
+              
+              print(f'✅ GitHub metadata logged')
+              print(f'  Run ID: {github_run_id}')
+              print(f'  Actor: {github_actor}')
+              print(f'  Ref: {github_ref}')
+          "
+      volumeMounts:
+      - name: workdir
+        mountPath: /work
+        
+  - name: prepare-data
+    container:
+      image: python:3.9-slim
+      command: ["/bin/bash", "-c"]
+      args:
+        - |
+          python -c "
+          import pandas as pd
+          import numpy as np
+          import mlflow
+          
+          mlflow.set_tracking_uri('http://mlflow-service.argo.svc.cluster.local:5000')
+          mlflow.set_experiment('Netflix-GitHub-Actions')
+          
+          with mlflow.start_run(run_name='data-preparation') as run:
+              np.random.seed(42)
+              n_samples = 10000
+              
+              # Generate Netflix-like data
+              movies_watched = np.random.poisson(20, n_samples)
+              avg_rating = np.random.normal(3.5, 1.0, n_samples)
+              account_age = np.random.exponential(365, n_samples)
+              genre_preference = np.random.choice(['action', 'comedy', 'drama', 'thriller'], n_samples)
+              engagement = (
+                  0.3 * movies_watched + 
+                  0.4 * avg_rating + 
+                  0.2 * np.log1p(account_age) + 
+                  np.random.normal(0, 0.5, n_samples)
+              )
+              
+              df = pd.DataFrame({
+                  'movies_watched': movies_watched,
+                  'avg_rating': avg_rating,
+                  'account_age': account_age,
+                  'genre_preference': genre_preference,
+                  'engagement': engagement
+              })
+              
+              df.to_csv('/work/netflix_data.csv', index=False)
+              
+              # Log data statistics
+              mlflow.log_param('data_samples', len(df))
+              mlflow.log_param('features', df.shape[1] - 1)
+              mlflow.log_metric('avg_engagement', df['engagement'].mean())
+              mlflow.log_metric('max_engagement', df['engagement'].max())
+              mlflow.log_metric('min_engagement', df['engagement'].min())
+              
+              print(f'✅ Data prepared: {len(df)} samples')
+          "
+      volumeMounts:
+      - name: workdir
+        mountPath: /work
+        
+  - name: train-model
+    container:
+      image: python:3.9-slim
+      command: ["/bin/bash", "-c"]
+      args:
+        - |
+          python -c "
+          import pandas as pd
+          import numpy as np
+          from sklearn.ensemble import RandomForestRegressor
+          from sklearn.model_selection import train_test_split
+          from sklearn.preprocessing import LabelEncoder
+          import mlflow
+          import joblib
+          
+          mlflow.set_tracking_uri('http://mlflow-service.argo.svc.cluster.local:5000')
+          mlflow.set_experiment('Netflix-GitHub-Actions')
+          
+          # Load data
+          df = pd.read_csv('/work/netflix_data.csv')
+          le = LabelEncoder()
+          df['genre_preference_encoded'] = le.fit_transform(df['genre_preference'])
+          X = df[['movies_watched', 'avg_rating', 'account_age', 'genre_preference_encoded']]
+          y = df['engagement']
+          
+          # Split data
+          X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+          
+          with mlflow.start_run(run_name='model-training') as run:
+              # Model parameters
+              n_estimators = 100
+              max_depth = 10
+              min_samples_split = 5
+              
+              # Log parameters
+              mlflow.log_param('n_estimators', n_estimators)
+              mlflow.log_param('max_depth', max_depth)
+              mlflow.log_param('min_samples_split', min_samples_split)
+              mlflow.log_param('train_size', len(X_train))
+              mlflow.log_param('test_size', len(X_test))
+              mlflow.log_param('random_state', 42)
+              
+              # Train model
+              model = RandomForestRegressor(
+                  n_estimators=n_estimators,
+                  max_depth=max_depth,
+                  min_samples_split=min_samples_split,
+                  random_state=42,
+                  n_jobs=-1
+              )
+              model.fit(X_train, y_train)
+              
+              # Log model
+              mlflow.sklearn.log_model(
+                  model, 
+                  'model',
+                  registered_model_name='netflix-github-actions-model'
+              )
+              
+              # Save model for evaluation
+              joblib.dump(model, '/work/trained_model.pkl')
+              
+              # Log training metrics
+              train_score = model.score(X_train, y_train)
+              mlflow.log_metric('train_score', train_score)
+              
+              print(f'✅ Model trained successfully')
+              print(f'  Training R²: {train_score:.4f}')
+          "
+      volumeMounts:
+      - name: workdir
+        mountPath: /work
+        
+  - name: evaluate-model
+    container:
+      image: python:3.9-slim
+      command: ["/bin/bash", "-c"]
+      args:
+        - |
+          python -c "
+          import pandas as pd
+          import numpy as np
+          from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+          from sklearn.preprocessing import LabelEncoder
+          import joblib
+          import mlflow
+          
+          mlflow.set_tracking_uri('http://mlflow-service.argo.svc.cluster.local:5000')
+          mlflow.set_experiment('Netflix-GitHub-Actions')
+          
+          # Load data
+          df = pd.read_csv('/work/netflix_data.csv')
+          le = LabelEncoder()
+          df['genre_preference_encoded'] = le.fit_transform(df['genre_preference'])
+          X = df[['movies_watched', 'avg_rating', 'account_age', 'genre_preference_encoded']]
+          y = df['engagement']
+          
+          from sklearn.model_selection import train_test_split
+          X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+          
+          # Load model
+          model = joblib.load('/work/trained_model.pkl')
+          
+          with mlflow.start_run(run_name='model-evaluation') as run:
+              # Make predictions
+              y_pred = model.predict(X_test)
+              
+              # Calculate metrics
+              mse = mean_squared_error(y_test, y_pred)
+              rmse = np.sqrt(mse)
+              r2 = r2_score(y_test, y_pred)
+              mae = mean_absolute_error(y_test, y_pred)
+              
+              # Log metrics
+              mlflow.log_metric('mse', mse)
+              mlflow.log_metric('rmse', rmse)
+              mlflow.log_metric('r2_score', r2)
+              mlflow.log_metric('mae', mae)
+              mlflow.log_metric('test_samples', len(y_test))
+              
+              # Log feature importance
+              feature_importance = dict(zip(X.columns, model.feature_importances_))
+              for feature, importance in feature_importance.items():
+                  mlflow.log_metric(f'feature_importance_{feature}', importance)
+              
+              print(f'✅ Model evaluation complete:')
+              print(f'  RMSE: {rmse:.4f}')
+              print(f'  R² Score: {r2:.4f}')
+              print(f'  MAE: {mae:.4f}')
+          "
+      volumeMounts:
+      - name: workdir
+        mountPath: /work
+        
+  - name: register-model
+    container:
+      image: python:3.9-slim
+      command: ["/bin/bash", "-c"]
+      args:
+        - |
+          python -c "
+          import mlflow
+          
+          mlflow.set_tracking_uri('http://mlflow-service.argo.svc.cluster.local:5000')
+          
+          # Get the latest run from training
+          client = mlflow.MlflowClient()
+          experiment = client.get_experiment_by_name('Netflix-GitHub-Actions')
+          runs = client.search_runs(experiment.experiment_id, order_by=['start_time desc'], max_results=1)
+          
+          if runs:
+              run_id = runs[0].info.run_id
+              print(f'Found training run: {run_id}')
+              
+              with mlflow.start_run(run_id=run_id) as run:
+                  # Register the model
+                  model_uri = f'runs:/{run_id}/model'
+                  model_details = mlflow.register_model(
+                      model_uri=model_uri,
+                      name='netflix-github-actions-model'
+                  )
+                  
+                  print(f'✅ Model registered successfully!')
+                  print(f'  Model Name: {model_details.name}')
+                  print(f'  Model Version: {model_details.version}')
+                  print(f'  Run ID: {run.info.run_id}')
+          else:
+              print('❌ No training run found')
+          "
+          
+  - name: send-notification
+    container:
+      image: python:3.9-slim
+      command: ["/bin/bash", "-c"]
+      args:
+        - |
+          python -c "
+          import mlflow
+          import requests
+          import json
+          import os
+          from datetime import datetime
+          
+          mlflow.set_tracking_uri('http://mlflow-service.argo.svc.cluster.local:5000')
+          
+          with mlflow.start_run(run_name='github-actions-notification') as run:
+              # Get latest model version
+              client = mlflow.MlflowClient()
+              model_name = 'netflix-github-actions-model'
+              
+              try:
+                  model_versions = client.search_model_versions(f'name=\\'{model_name}\\'')
+                  latest_version = None
+                  
+                  for mv in model_versions:
+                      if mv.current_stage == 'None' or mv.current_stage == 'Staging':
+                          latest_version = mv
+                          break
+                  
+                  if latest_version:
+                      mlflow.log_param('model_name', model_name)
+                      mlflow.log_param('model_version', latest_version.version)
+                      mlflow.log_param('notification_type', 'github_actions_completion')
+                      mlflow.log_metric('notification_sent', 1.0)
+                      mlflow.log_metric('completion_time', float(datetime.now().timestamp()))
+                      
+                      print(f'✅ Notification logged for {model_name} v{latest_version.version}')
+                  else:
+                      print('⚠️ No model version found for notification')
+                      
+              except Exception as e:
+                  print(f'❌ Notification failed: {str(e)}')
+                  mlflow.log_param('notification_error', str(e))
+                  mlflow.log_metric('notification_sent', 0.0)
+          
+          print('🎉 Netflix GitHub Actions workflow completed successfully!')
+          "

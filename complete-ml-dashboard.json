@@ -1,0 +1,102 @@
+﻿{
+  "dashboard": {
+    "id": null,
+    "uid": "netflix-ml-complete",
+    "title": "Netflix ML Pipeline - Complete Monitoring",
+    "tags": ["ml", "netflix", "monitoring"],
+    "timezone": "browser",
+    "schemaVersion": 30,
+    "version": 1,
+    "panels": [
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0},
+        "id": 1,
+        "targets": [{"expr": "netflix_ml_model_accuracy", "refId": "A"}],
+        "title": "Model Accuracy",
+        "type": "gauge",
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "yellow", "value": 0.85},
+                {"color": "green", "value": 0.9}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0},
+        "id": 2,
+        "targets": [{"expr": "netflix_ml_data_drift_score", "refId": "A"}],
+        "title": "Data Drift Score",
+        "type": "gauge",
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": 0},
+                {"color": "yellow", "value": 0.2},
+                {"color": "red", "value": 0.3}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0},
+        "id": 3,
+        "targets": [
+          {"expr": "rate(netflix_ml_workflows_total{status=\"success\"}[5m])", "refId": "A"},
+          {"expr": "rate(netflix_ml_workflows_total{status=\"failed\"}[5m])", "refId": "B"}
+        ],
+        "title": "Workflow Execution Rate",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "id": 4,
+        "targets": [{"expr": "histogram_quantile(0.95, rate(netflix_ml_workflow_duration_seconds_bucket[5m]))", "refId": "A"}],
+        "title": "Workflow Duration (95th percentile)",
+        "type": "timeseries",
+        "fieldConfig": {
+          "defaults": {"unit": "s"}
+        }
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "id": 5,
+        "targets": [
+          {"expr": "rate(netflix_api_requests_total{endpoint=\"/predict\"}[5m])", "refId": "A"},
+          {"expr": "rate(netflix_api_requests_total{endpoint=\"/health\"}[5m])", "refId": "B"}
+        ],
+        "title": "API Request Rate",
+        "type": "timeseries"
+      }
+    ]
+  },
+  "overwrite": true
+}

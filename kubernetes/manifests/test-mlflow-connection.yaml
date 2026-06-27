@@ -1,0 +1,76 @@
+﻿apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: test-mlflow-connection-
+  namespace: argo
+spec:
+  entrypoint: test-mlflow
+  templates:
+  - name: test-mlflow
+    container:
+      image: python:3.9-slim
+      command: ["/bin/bash", "-c"]
+      args:
+        - |
+          # Install MLflow 2.10.0 to match cluster version
+          pip install mlflow==2.10.0 requests psycopg2-binary pandas numpy scikit-learn
+          
+          python -c "
+          import mlflow
+          import requests
+          import os
+          import time
+          from datetime import datetime
+          
+          print('=== Testing MLflow Connection ===')
+          print(f'MLflow version: {mlflow.__version__}')
+          print(f'Timestamp: {datetime.now()}')
+          
+          # Test MLflow URIs
+          mlflow_uris = [
+              'http://mlflow-service:5000',
+              'http://mlflow-service.argo:5000', 
+              'http://mlflow-service.argo.svc.cluster.local:5000'
+          ]
+          
+          successful_uri = None
+          
+          for uri in mlflow_uris:
+              print(f'\nTesting URI: {uri}')
+              try:
+                  # Test health endpoint
+                  response = requests.get(f'{uri}/health', timeout=10)
+                  print(f'Health check: {response.status_code}')
+                  
+                  # Set MLflow tracking URI
+                  mlflow.set_tracking_uri(uri)
+                  print(f'Tracking URI set to: {mlflow.get_tracking_uri()}')
+                  
+                  # Test MLflow functionality
+                  experiments = mlflow.search_experiments()
+                  print(f'Found {len(experiments)} existing experiments')
+                  
+                  # Create test run
+                  mlflow.set_experiment('Argo-Workflow-Test')
+                  with mlflow.start_run(run_name=f'argo-test-{int(time.time())}') as run:
+                      mlflow.log_param('test_source', 'argo_workflow')
+                      mlflow.log_param('mlflow_version', mlflow.__version__)
+                      mlflow.log_metric('connection_test', 1.0)
+                      mlflow.log_metric('test_timestamp', float(time.time()))
+                      
+                      print(f'Success! Run ID: {run.info.run_id}')
+                      print(f'Experiment ID: {run.info.experiment_id}')
+                  
+                  successful_uri = uri
+                  break
+                  
+              except Exception as e:
+                  print(f'Failed: {str(e)}')
+          
+          print(f'\nFinal Result:')
+          if successful_uri:
+              print(f'✅ SUCCESS: Connected to {successful_uri}')
+              print(f'You should see this run in MLflow UI')
+          else:
+              print(f'❌ FAILED: Could not connect to MLflow')
+          "

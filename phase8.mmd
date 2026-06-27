@@ -1,0 +1,31 @@
+﻿flowchart TB
+  subgraph ExternalLayer[EXTERNAL LAYER]
+    GRepo[GitHub Repository]
+    Runner[GitHub Actions Runner\nCI/CD Pipeline\n- lint\n- test\n- build\n- webhook call]
+    GRepo -- git push --> Runner
+  end
+  Runner -- HTTPS POST --> Ngrok
+  subgraph TunnelLayer[TUNNEL LAYER]
+    Ngrok[ngrok Tunnel Service\nPublic URL: https://abc123.ngrok-free.app\nForward to: http://localhost:5002\nSecurity: HTTPS encryption, request inspection]
+  end
+  Ngrok -- Forward --> Webhook
+  subgraph LocalLayer[LOCAL LAYER]
+    Webhook[Flask Webhook Listener (Port 5002)\nEndpoints: /health, /webhook, /debug]
+    Kubectl[kubectl create -f\n(via subprocess.run)]
+    Webhook --> Kubectl
+  end
+  Kubectl -- Kubernetes API call --> Argo
+  subgraph K8sLayer[KUBERNETES LAYER (Minikube, 5GB RAM)]
+    noteN[Namespace: argo]
+    Argo[Argo Workflows (DAG)\n- Setup FS\n- Fetch Data\n- Train Model\n- Evaluate]
+    ArgoCtl[Argo Controller\nWatches CRDs • Creates Pods • Manages DAGs]
+    MLflow[MLflow Service (Port 5000)\nBackend: Postgres • Tracks experiments]
+    PG[(PostgreSQL Database)]
+    PVC[(Persistent Volume Claims)]
+    DNS[Service Mesh (DNS Resolution)]
+    ArgoCtl --- Argo
+    Argo --> MLflow
+    MLflow --> PG
+    Argo --> PVC
+    Argo --> DNS
+  end

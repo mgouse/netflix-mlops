@@ -1,0 +1,12 @@
+﻿{
+  "repositoryName": "mgouse/netflix-mlops",
+  "pipelineDirectory": "netflix-mlops",
+  "workspaceDirectory": "netflix-mlops\\netflix-mlops",
+  "repositories": {
+    "mgouse/netflix-mlops": {
+      "repositoryPath": "netflix-mlops\\netflix-mlops",
+      "lastRunOn": "06/27/2026 02:47:14 +05:30"
+    }
+  },
+  "lastRunOn": "06/27/2026 02:47:14 +05:30"
+}

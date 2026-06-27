@@ -1,149 +1,89 @@
-﻿name: Trigger Netflix Fixed Phase 10 Argo Workflow
+﻿name: Trigger Netflix Argo Workflow (Manual)
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
     inputs:
       workflow_name:
-        description: 'Name of the workflow to trigger'
+        description: 'Workflow file name (without .yml)'
         required: true
-        default: 'netflix-ml-pipeline-fixed'
-      run_name:
-        description: 'Custom run name (optional)'
-        required: false
+        default: 'netflix-ml-pipeline-fixed_phase10'
 
 jobs:
   trigger-argo-workflow:
-    runs-on: self-hosted  # Use self-hosted runner with kubectl access
+    runs-on: self-hosted
+    defaults:
+      run:
+        shell: bash
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       
+    - name: Verify kubectl access
+      run: |
+        kubectl config use-context minikube
+        kubectl get nodes
+        echo "Current workflows:"
+        kubectl get workflows -n argo || echo "No workflows yet"
+        
     - name: Submit Argo Workflow
       run: |
-        # Set workflow name from input or default
-        WORKFLOW_NAME="${{ github.event.inputs.workflow_name || 'netflix-ml-pipeline-fixed' }}"
+        WORKFLOW_NAME="${{ github.event.inputs.workflow_name }}"
+        WORKFLOW_FILE=".github/workflows/${WORKFLOW_NAME}.yml"
         
-        # Generate unique run name if not provided
-        if [ -z "${{ github.event.inputs.run_name }}" ]; then
-          RUN_NAME="github-action-$(date +%s)"
-        else
-          RUN_NAME="${{ github.event.inputs.run_name }}"
+        echo "Submitting: $WORKFLOW_FILE"
+        
+        if [ ! -f "$WORKFLOW_FILE" ]; then
+          echo "ERROR: File not found: $WORKFLOW_FILE"
+          exit 1
         fi
         
-        echo "Submitting Argo workflow: $WORKFLOW_NAME"
-        echo "Run name: $RUN_NAME"
+        kubectl create -f "$WORKFLOW_FILE" -n argo
         
-        # Submit the workflow - using the correct path
-        kubectl create -f .github/workflows/netflix-ml-pipeline-fixed_phase10.yml -n argo
+        sleep 3
+        WORKFLOW_ID=$(kubectl get workflows -n argo --sort-by='.metadata.creationTimestamp' -o jsonpath='{.items[-1].metadata.name}')
         
-        # Get the workflow name
-        WORKFLOW_ID=$(kubectl get workflows -n argo --sort-by='.metadata.creationTimestamp' -o jsonpath='{.items[-1:].metadata.name}')
-        echo "Workflow submitted: $WORKFLOW_ID"
-        
-        # Save workflow ID for next steps
+        echo "✅ Submitted: $WORKFLOW_ID"
         echo "WORKFLOW_ID=$WORKFLOW_ID" >> $GITHUB_ENV
         
     - name: Monitor Workflow Status
       run: |
-        echo "Monitoring workflow: ${{ env.WORKFLOW_ID }}"
+        WORKFLOW_ID="${{ env.WORKFLOW_ID }}"
+        echo "Monitoring: $WORKFLOW_ID"
         
-        # Wait for workflow to complete (max 30 minutes)
         timeout=1800
         start_time=$(date +%s)
         
         while true; do
-          current_time=$(date +%s)
-          elapsed=$((current_time - start_time))
+          elapsed=$(($(date +%s) - start_time))
           
           if [ $elapsed -gt $timeout ]; then
-            echo "Timeout reached after $timeout seconds"
+            echo "Timeout!"
             exit 1
           fi
           
-          STATUS=$(kubectl get workflow ${{ env.WORKFLOW_ID }} -n argo -o jsonpath='{.status.phase}')
+          STATUS=$(kubectl get workflow "$WORKFLOW_ID" -n argo -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
+          echo "Status: $STATUS (${elapsed}s)"
           
-          echo "Workflow status: $STATUS (elapsed: ${elapsed}s)"
+          [ "$STATUS" = "Succeeded" ] && break
+          [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Error" ] && exit 1
           
-          case $STATUS in
-            "Succeeded")
-              echo "✅ Workflow completed successfully!"
-              break
-              ;;
-            "Failed"|"Error")
-              echo "❌ Workflow failed!"
-              kubectl logs -n argo -l workflows.argoproj.io/workflow=${{ env.WORKFLOW_ID }} --tail=50
-              exit 1
-              ;;
-            "Running")
-              sleep 10
-              ;;
-            *)
-              sleep 5
-              ;;
-          esac
+          sleep 15
         done
         
-    - name: Get MLflow Run Details
-      run: |
-        echo "Fetching MLflow run details from workflow logs..."
-        
-        # Extract MLflow run ID from workflow logs
-        MLFLOW_RUN_ID=$(kubectl logs -n argo -l workflows.argoproj.io/workflow=${{ env.WORKFLOW_ID }} | grep -oP 'Successfully logged run: \K\S+' | tail -1)
-        
-        if [ -n "$MLFLOW_RUN_ID" ]; then
-          echo "MLflow Run ID: $MLFLOW_RUN_ID"
-          echo "MLFLOW_RUN_ID=$MLFLOW_RUN_ID" >> $GITHUB_ENV
-        else
-          echo "⚠️ Could not extract MLflow run ID from logs"
-        fi
-        
+        echo "✅ Workflow completed successfully!"
+
     - name: Display Results
       run: |
-        echo "🎉 Netflix Fixed Phase 10 Workflow Execution Summary"
-        echo "=================================================="
-        echo "Workflow ID: ${{ env.WORKFLOW_ID }}"
-        echo "Status: ✅ Succeeded"
-        
-        if [ -n "${{ env.MLFLOW_RUN_ID }}" ]; then
-          echo "MLflow Run ID: ${{ env.MLFLOW_RUN_ID }}"
-          echo ""
-          echo "📊 View in MLflow UI:"
-          echo "1. Port-forward to cluster MLflow:"
-          echo "   kubectl port-forward -n argo svc/mlflow-service 5000:5000"
-          echo ""
-          echo "2. Open MLflow UI:"
-          echo "   http://localhost:5000"
-          echo ""
-          echo "3. Look for experiment: 'Netflix-Retraining-Pipeline'"
-          echo "4. Find run with ID: ${{ env.MLFLOW_RUN_ID }}"
-        else
-          echo "⚠️ MLflow run ID not found in logs"
-          echo "Please check the workflow logs manually:"
-          echo "kubectl logs -n argo -l workflows.argoproj.io/workflow=${{ env.WORKFLOW_ID }}"
-        fi
-        
-    - name: Workflow Artifacts
-      run: |
-        echo "Creating workflow artifacts..."
-        
-        # Save workflow logs
-        kubectl logs -n argo -l workflows.argoproj.io/workflow=${{ env.WORKFLOW_ID }} > workflow-logs.txt
-        
-        # Save workflow manifest
-        kubectl get workflow ${{ env.WORKFLOW_ID }} -n argo -o yaml > workflow-manifest.yaml
-        
-        echo "Artifacts saved:"
-        echo "- workflow-logs.txt"
-        echo "- workflow-manifest.yaml"
-        
-    - name: Upload Artifacts
-      uses: actions/upload-artifact@v3
-      with:
-        name: workflow-execution-${{ env.WORKFLOW_ID }}
-        path: |
-          workflow-logs.txt
-          workflow-manifest.yaml
-        retention-days: 30
+        echo "========================================"
+        echo "🎉 Netflix ML Pipeline Complete!"
+        echo "========================================"
+        echo "Workflow: ${{ env.WORKFLOW_ID }}"
+        echo ""
+        echo "📊 Access Points:"
+        echo "Argo UI:  kubectl port-forward -n argo svc/argo-server 2746:2746"
+        echo "          http://localhost:2746"
+        echo ""
+        echo "MLflow:   kubectl port-forward -n argo svc/mlflow-service 5000:5000"
+        echo "          http://localhost:5000"
+        echo "========================================"

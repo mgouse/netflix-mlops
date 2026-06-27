@@ -1,0 +1,46 @@
+# Create a ConfigMap with additional scrape configs
+@'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-additional-scrape-configs
+  namespace: monitoring
+data:
+  prometheus-additional.yaml: |
+    - job_name: 'ml-metrics'
+      static_configs:
+      - targets: ['ml-metrics-exporter.monitoring.svc.cluster.local:8000']
+      metrics_path: '/metrics'
+      scrape_interval: 30s
+    
+    - job_name: 'argo-workflows'
+      static_configs:
+      - targets: ['workflow-controller-metrics.argo.svc.cluster.local:9090']
+      metrics_path: '/metrics'
+      scrape_interval: 30s
+'@ | kubectl apply -f -
+
+# Patch Prometheus deployment to include additional configs
+kubectl patch deployment prometheus -n monitoring --type='json' -p='[
+  {
+    "op": "add",
+    "path": "/spec/template/spec/containers/0/volumeMounts/-",
+    "value": {
+      "name": "additional-scrape-configs",
+      "mountPath": "/etc/prometheus/additional-scrape-configs"
+    }
+  },
+  {
+    "op": "add",
+    "path": "/spec/template/spec/volumes/-",
+    "value": {
+      "name": "additional-scrape-configs",
+      "configMap": {
+        "name": "prometheus-additional-scrape-configs"
+      }
+    }
+  }
+]'
+
+# Restart Prometheus to pick up new config
+kubectl rollout restart deployment prometheus -n monitoring
