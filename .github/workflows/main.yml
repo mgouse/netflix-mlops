@@ -1,7 +1,3 @@
-name: Main CI/CD Pipeline  # Name of the GitHub Actions workflow
-#test
-#  Events that trigger the workflow
-=======
 name: Main CI/CD Pipeline
 
 on:
