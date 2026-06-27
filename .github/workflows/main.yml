@@ -1,178 +1,145 @@
-name: Main CI/CD Pipeline
+name: Main CI/CD Pipeline  # Name of the GitHub Actions workflow
 
+# Events that trigger the workflow
 on:
   push:
-    branches: [ main ]
+    branches: [ main ]       # Trigger on push to main branch
   pull_request:
-    branches: [ main ]
-  workflow_dispatch:
+    branches: [ main ]       # Trigger on PRs to main branch
+  workflow_dispatch:         # Allow manual trigger from GitHub UI
 
+# Environment variables available to all jobs
 env:
-  PYTHON_VERSION: '3.9'
-  IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/netflix-api
+  PYTHON_VERSION: '3.9'      # Python version to be used
+  IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/netflix-api  # Docker image name using GitHub Secrets
 
+# Linting job to ensure code style and formatting
 jobs:
   lint:
     name: Lint & Format Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest   # Run this job on the latest Ubuntu runner
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-python@v4
+    - name: Checkout code
+      uses: actions/checkout@v4  # Clone the repository
+
+    - name: Set up Python
+      uses: actions/setup-python@v4  # Install the specified Python version
       with:
         python-version: ${{ env.PYTHON_VERSION }}
-    - run: |
-        pip install flake8 black
-        black --check src/ tests/ || true
-        flake8 src/ tests/ --max-line-length=88 || true
 
+    - name: Install linting tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 black  # Install formatting and linting tools
+
+    - name: Check formatting
+      run: black --check src/ tests/  # Check if code is formatted using Black
+      continue-on-error: true         # Don’t fail pipeline on formatting errors
+
+    - name: Lint with Flake8
+      run: flake8 src/ tests/ --max-line-length=88  # Run static code analysis
+      continue-on-error: true                        # Don’t fail pipeline on lint errors
+
+  # Unit test job
   test:
     name: Run Tests
     runs-on: ubuntu-latest
-    needs: lint
+    needs: lint           # Only run after lint job succeeds
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-python@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
       with:
         python-version: ${{ env.PYTHON_VERSION }}
-    - run: |
-        pip install -r requirements.txt
-        pytest tests/
 
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt  # Install project dependencies
+
+    - name: Run unit tests
+      run: pytest tests/  # Run all unit tests in the tests/ folder
+
+  # Build Docker image and push to Docker Hub
   build-and-push:
     name: Build & Push Docker Image
     runs-on: ubuntu-latest
-    needs: test
+    needs: test  # Only run after tests pass
     steps:
-    - uses: actions/checkout@v4
-    - uses: docker/setup-buildx-action@v3
-    - uses: docker/login-action@v3
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3  # Enable advanced Docker builds
+
+    - name: Log in to Docker Hub
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: docker/login-action@v3
       with:
-        username: ${{ secrets.DOCKER_USERNAME }}
+        username: ${{ secrets.DOCKER_USERNAME }}  # Use secrets to login
         password: ${{ secrets.DOCKER_TOKEN }}
-    - uses: docker/build-push-action@v5
+
+    - name: Build and push image
+      uses: docker/build-push-action@v5
       with:
-        context: .
+        context: .  # Build context is the root of the repo
         push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         tags: |
-          ${{ env.IMAGE_NAME }}:latest
-          ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          ${{ env.IMAGE_NAME }}:latest           
+          ${{ env.IMAGE_NAME }}:${{ github.sha }} 
+        cache-from: type=gha                      
+        cache-to: type=gha,mode=max
 
+  # Validate Kubernetes manifest files
   validate-k8s:
     name: Validate Kubernetes Manifests
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-python@v4
-      with:
-        python-version: ${{ env.PYTHON_VERSION }}
-    - run: pip install pyyaml
-    - run: python scripts/ci/validate_k8s_manifests.py
-
-  trigger-argo:
-    name: Trigger Argo on Minikube
-    runs-on: self-hosted
-    needs: [build-and-push, validate-k8s]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    
-    steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
-    - name: Setup Execution Policy
-      shell: powershell
-      run: |
-        Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
-        Write-Host "Execution policy set to Bypass for this session"
-        
-    - name: Setup kubectl context
-      shell: powershell
-      run: |
-        kubectl config use-context minikube
-        kubectl config current-context
-        kubectl get nodes
-        
-    - name: Submit Argo Workflow
-      shell: powershell
-      run: |
-        Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
-        Write-Host "=== Submitting Argo Workflow to Minikube ==="
-        
-        $workflowFile = ".github/workflows/netflix-ml-pipeline-fixed_phase10.yml"
-        
-        if (-not (Test-Path $workflowFile)) {
-          Write-Error "Workflow file not found: $workflowFile"
-          exit 1
-        }
-        
-        Write-Host "Using workflow: $workflowFile"
-        
-        kubectl create -f $workflowFile -n argo
-        
-        Start-Sleep -Seconds 3
-        
-        $workflowName = kubectl get workflows -n argo --sort-by='.metadata.creationTimestamp' -o jsonpath='{.items[-1].metadata.name}'
-        
-        Write-Host "Workflow submitted: $workflowName"
-        echo "WORKFLOW_NAME=$workflowName" >> $env:GITHUB_ENV
-        
-        kubectl get workflow $workflowName -n argo
 
-    - name: Monitor Workflow
-      shell: powershell
-      timeout-minutes: 30
-      run: |
-        Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
-        $workflowName = $env:WORKFLOW_NAME
-        Write-Host "Monitoring: $workflowName"
-        
-        $timeout = 1800
-        $startTime = Get-Date
-        
-        while ($true) {
-          $elapsed = ([DateTime]::Now - $startTime).TotalSeconds
-          
-          if ($elapsed -gt $timeout) {
-            Write-Error "Timeout after 30 minutes"
-            exit 1
-          }
-          
-          $status = kubectl get workflow $workflowName -n argo -o jsonpath='{.status.phase}' 2>$null
-          if (-not $status) { $status = "Pending" }
-          
-          Write-Host "Status: $status (${elapsed}s)"
-          
-          switch ($status) {
-            "Succeeded" { 
-              Write-Host "Workflow completed!"
-              return
-            }
-            "Failed" { 
-              Write-Host "Workflow failed!"
-              kubectl logs -n argo -l workflows.argoproj.io/workflow=$workflowName --tail=50
-              exit 1 
-            }
-            "Error" { 
-              Write-Host "Workflow error!"
-              kubectl logs -n argo -l workflows.argoproj.io/workflow=$workflowName --tail=50
-              exit 1 
-            }
-            default { Start-Sleep -Seconds 15 }
-          }
-        }
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
 
-    - name: Get Workflow Logs
-      shell: powershell
-      if: always()
+    - name: Install dependencies
+      run: pip install pyyaml  # Install PyYAML for parsing Kubernetes manifests
+
+    - name: Run validation script
+      run: python scripts/ci/validate_k8s_manifests.py  # Custom script to validate YAML
+
+  # Trigger the Argo CD pipeline via webhook
+  trigger-argo-webhook:
+    name: Trigger Argo via Webhook
+    runs-on: ubuntu-latest
+    needs: [build-and-push, validate-k8s]  # Wait for Docker and K8s validation
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'  # Only on push to main
+    steps:
+    - name: Send Webhook to Local Listener
+      env:
+        NGROK_URL: ${{ secrets.NGROK_WEBHOOK_URL }}  # Ngrok endpoint (public URL)
+        COMMIT_SHA: ${{ github.sha }}                # Commit SHA from GitHub
+        REPO_NAME: ${{ github.repository }}          # Repository name
       run: |
-        Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
-        $workflowName = $env:WORKFLOW_NAME
-        Write-Host "=== Final Workflow Status ==="
-        kubectl get workflow $workflowName -n argo -o wide
-        
-        Write-Host "=== Workflow Logs ==="
-        kubectl logs -n argo -l workflows.argoproj.io/workflow=$workflowName --tail=100
-        
-        Write-Host "=== MLflow Access Info ==="
-        Write-Host "Port-forward: kubectl port-forward -n argo svc/mlflow-service 5000:5000"
-        Write-Host "URL: http://localhost:5000"
+        curl -X POST \
+          -H "Content-Type: application/json" \
+          -H "X-GitHub-Event: push" \
+          -H "User-Agent: GitHub-Actions" \
+          -d '{
+            "event": "push",
+            "repository": "'"$REPO_NAME"'",
+            "ref": "refs/heads/main",
+            "commit_sha": "'"$COMMIT_SHA"'",
+            "image_name": "'"${{ env.IMAGE_NAME }}"'",
+            "image_tag": "'"$COMMIT_SHA"'",
+            "triggered_by": "github_actions",
+            "workflow_run": {
+              "name": "Main CI/CD Pipeline",
+              "run_number": "'"$GITHUB_RUN_NUMBER"'",
+              "run_id": "'"$GITHUB_RUN_ID"'"
+            }
+          }' \
+          "$NGROK_URL/webhook"  # Send POST to your local Flask listener via Ngrok
