@@ -80,89 +80,90 @@ jobs:
       uses: actions/checkout@v4
       
     - name: Setup kubectl context
-      shell: pwsh
+      shell: powershell
       run: |
         kubectl config use-context minikube
         kubectl config current-context
         kubectl get nodes
         
     - name: Submit Argo Workflow
-      shell: bash
+      shell: powershell
       run: |
-        echo "=== Submitting Argo Workflow to Minikube ==="
+        Write-Host "=== Submitting Argo Workflow to Minikube ==="
         
-        WORKFLOW_FILE=".github/workflows/netflix-ml-pipeline-fixed_phase10.yml"
+        $workflowFile = ".github/workflows/netflix-ml-pipeline-fixed_phase10.yml"
         
-        if [ ! -f "$WORKFLOW_FILE" ]; then
-          echo "ERROR: Workflow file not found: $WORKFLOW_FILE"
+        if (-not (Test-Path $workflowFile)) {
+          Write-Error "Workflow file not found: $workflowFile"
           exit 1
-        fi
+        }
         
-        echo "Using workflow: $WORKFLOW_FILE"
+        Write-Host "Using workflow: $workflowFile"
         
-        kubectl create -f "$WORKFLOW_FILE" -n argo
+        kubectl create -f $workflowFile -n argo
         
-        sleep 3
+        Start-Sleep -Seconds 3
         
-        WORKFLOW_NAME=$(kubectl get workflows -n argo --sort-by='.metadata.creationTimestamp' -o jsonpath='{.items[-1].metadata.name}')
+        $workflowName = kubectl get workflows -n argo --sort-by='.metadata.creationTimestamp' -o jsonpath='{.items[-1].metadata.name}'
         
-        echo "✅ Workflow submitted: $WORKFLOW_NAME"
-        echo "WORKFLOW_NAME=$WORKFLOW_NAME" >> $GITHUB_ENV
+        Write-Host "✅ Workflow submitted: $workflowName"
+        echo "WORKFLOW_NAME=$workflowName" >> $env:GITHUB_ENV
         
-        kubectl get workflow "$WORKFLOW_NAME" -n argo
+        kubectl get workflow $workflowName -n argo
 
     - name: Monitor Workflow
-      shell: bash
+      shell: powershell
       timeout-minutes: 30
       run: |
-        WORKFLOW_NAME="${{ env.WORKFLOW_NAME }}"
-        echo "Monitoring: $WORKFLOW_NAME"
+        $workflowName = $env:WORKFLOW_NAME
+        Write-Host "Monitoring: $workflowName"
         
-        timeout=1800
-        start_time=$(date +%s)
+        $timeout = 1800
+        $startTime = Get-Date
         
-        while true; do
-          current_time=$(date +%s)
-          elapsed=$((current_time - start_time))
+        while ($true) {
+          $elapsed = ([DateTime]::Now - $startTime).TotalSeconds
           
-          if [ $elapsed -gt $timeout ]; then
-            echo "Timeout after 30 minutes"
+          if ($elapsed -gt $timeout) {
+            Write-Error "Timeout after 30 minutes"
             exit 1
-          fi
+          }
           
-          STATUS=$(kubectl get workflow "$WORKFLOW_NAME" -n argo -o jsonpath='{.status.phase}' 2>/dev/null || echo "Pending")
-          echo "Status: $STATUS (${elapsed}s)"
+          $status = kubectl get workflow $workflowName -n argo -o jsonpath='{.status.phase}' 2>$null
+          if (-not $status) { $status = "Pending" }
           
-          case "$STATUS" in
-            "Succeeded")
-              echo "✅ Workflow completed!"
-              break
-              ;;
-            "Failed"|"Error")
-              echo "❌ Workflow failed!"
-              kubectl logs -n argo -l workflows.argoproj.io/workflow="$WORKFLOW_NAME" --tail=50 || true
-              exit 1
-              ;;
-            "Running"|"Pending")
-              sleep 15
-              ;;
-            *)
-              sleep 5
-              ;;
-          esac
-        done
+          Write-Host "Status: $status (${elapsed}s)"
+          
+          switch ($status) {
+            "Succeeded" { 
+              Write-Host "✅ Workflow completed!"
+              return
+            }
+            "Failed" { 
+              Write-Host "❌ Workflow failed!"
+              kubectl logs -n argo -l workflows.argoproj.io/workflow=$workflowName --tail=50
+              exit 1 
+            }
+            "Error" { 
+              Write-Host "❌ Workflow error!"
+              kubectl logs -n argo -l workflows.argoproj.io/workflow=$workflowName --tail=50
+              exit 1 
+            }
+            default { Start-Sleep -Seconds 15 }
+          }
+        }
 
     - name: Get Workflow Logs
-      shell: bash
+      shell: powershell
       if: always()
       run: |
-        WORKFLOW_NAME="${{ env.WORKFLOW_NAME }}"
-        echo "=== Final Workflow Status ==="
-        kubectl get workflow "$WORKFLOW_NAME" -n argo -o wide || true
+        $workflowName = $env:WORKFLOW_NAME
+        Write-Host "=== Final Workflow Status ==="
+        kubectl get workflow $workflowName -n argo -o wide
         
-        echo "=== Workflow Logs ==="
-        kubectl logs -n argo -l workflows.argoproj.io/workflow="$WORKFLOW_NAME" --tail=100 || true
+        Write-Host "=== Workflow Logs ==="
+        kubectl logs -n argo -l workflows.argoproj.io/workflow=$workflowName --tail=100
         
-        echo "=== MLflow Access Info ==="
-        echo "Port-forward: kubectl port-forward -n argo svc/mlflow-service 5000:5000"
-        echo "URL: http://localhost:5000"
+        Write-Host "=== MLflow Access Info ==="
+        Write-Host "Port-forward: kubectl port-forward -n argo svc/mlflow-service 5000:5000"
+        Write-Host "URL: http://localhost:5000"
