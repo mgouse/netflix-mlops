@@ -1,5 +1,4 @@
 ﻿name: Trigger Netflix Argo Workflow (Manual)
-
 on:
   workflow_dispatch:
     inputs:
