@@ -79,6 +79,12 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
+    - name: Setup Execution Policy
+      shell: powershell
+      run: |
+        Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+        Write-Host "Execution policy set to Bypass for this session"
+        
     - name: Setup kubectl context
       shell: powershell
       run: |
@@ -89,6 +95,7 @@ jobs:
     - name: Submit Argo Workflow
       shell: powershell
       run: |
+        Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
         Write-Host "=== Submitting Argo Workflow to Minikube ==="
         
         $workflowFile = ".github/workflows/netflix-ml-pipeline-fixed_phase10.yml"
@@ -106,7 +113,7 @@ jobs:
         
         $workflowName = kubectl get workflows -n argo --sort-by='.metadata.creationTimestamp' -o jsonpath='{.items[-1].metadata.name}'
         
-        Write-Host "✅ Workflow submitted: $workflowName"
+        Write-Host "Workflow submitted: $workflowName"
         echo "WORKFLOW_NAME=$workflowName" >> $env:GITHUB_ENV
         
         kubectl get workflow $workflowName -n argo
@@ -115,6 +122,7 @@ jobs:
       shell: powershell
       timeout-minutes: 30
       run: |
+        Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
         $workflowName = $env:WORKFLOW_NAME
         Write-Host "Monitoring: $workflowName"
         
@@ -136,16 +144,16 @@ jobs:
           
           switch ($status) {
             "Succeeded" { 
-              Write-Host "✅ Workflow completed!"
+              Write-Host "Workflow completed!"
               return
             }
             "Failed" { 
-              Write-Host "❌ Workflow failed!"
+              Write-Host "Workflow failed!"
               kubectl logs -n argo -l workflows.argoproj.io/workflow=$workflowName --tail=50
               exit 1 
             }
             "Error" { 
-              Write-Host "❌ Workflow error!"
+              Write-Host "Workflow error!"
               kubectl logs -n argo -l workflows.argoproj.io/workflow=$workflowName --tail=50
               exit 1 
             }
@@ -157,6 +165,7 @@ jobs:
       shell: powershell
       if: always()
       run: |
+        Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
         $workflowName = $env:WORKFLOW_NAME
         Write-Host "=== Final Workflow Status ==="
         kubectl get workflow $workflowName -n argo -o wide
