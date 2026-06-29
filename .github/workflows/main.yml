@@ -1,5 +1,4 @@
 name: Main CI/CD Pipeline  # Name of the GitHub Actions workflow
-
 # Events that trigger the workflow
 on:
   push:
