@@ -1,0 +1,386 @@
+﻿apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: netflix-ml-pipeline-fixed-
+  namespace: argo
+  annotations:
+    workflows.argoproj.io/description: "Netflix ML Pipeline with MLflow Integration (Fixed)"
+    workflows.argoproj.io/tags: "ml,netflix,mlflow"
+spec:
+  entrypoint: netflix-pipeline
+  serviceAccountName: default
+  volumeClaimTemplates:
+  - metadata:
+      name: workdir
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 1Gi
+          
+  templates:
+  - name: netflix-pipeline
+    dag:
+      tasks:
+      - name: setup-mlflow
+        template: setup-mlflow
+      - name: data-preparation
+        template: prepare-data
+        dependencies: [setup-mlflow]
+      - name: model-training
+        template: train-model
+        dependencies: [data-preparation]
+      - name: model-evaluation
+        template: evaluate-model
+        dependencies: [model-training]
+      - name: model-registration
+        template: register-model
+        dependencies: [model-evaluation]
+        
+  - name: setup-mlflow
+    container:
+      image: python:3.9-slim
+      command: ["/bin/bash", "-c"]
+      args:
+        - |
+          pip install mlflow==2.10.0 requests pandas numpy scikit-learn psycopg2-binary
+          
+          python -c "
+          import mlflow
+          import requests
+          import os
+          import time
+          from datetime import datetime
+          
+          print('=== Netflix ML Pipeline with MLflow Integration ===')
+          print(f'Timestamp: {datetime.now()}')
+          
+          # Set MLflow tracking URI to cluster service
+          mlflow_tracking_uri = 'http://mlflow-service.argo.svc.cluster.local:5000'
+          print(f'Setting MLflow tracking URI to: {mlflow_tracking_uri}')
+          mlflow.set_tracking_uri(mlflow_tracking_uri)
+          
+          # Verify connection
+          try:
+              experiments = mlflow.search_experiments()
+              print(f'✓ Connected to MLflow - found {len(experiments)} experiments')
+              
+              # List existing experiments
+              print('Existing experiments:')
+              for exp in experiments:
+                  print(f'  - {exp.name} (ID: {exp.experiment_id})')
+          except Exception as e:
+              print(f'✗ MLflow connection failed: {e}')
+              raise
+          
+          # Set experiment
+          experiment_name = 'Netflix-Retraining-Pipeline'
+          print(f'Setting experiment: {experiment_name}')
+          mlflow.set_experiment(experiment_name)
+          
+          experiment = mlflow.get_experiment_by_name(experiment_name)
+          print(f'✓ Using experiment: {experiment.name} (ID: {experiment.experiment_id})')
+          
+          # Create a setup run
+          with mlflow.start_run(run_name=f'netflix-setup-{int(time.time())}') as run:
+              mlflow.log_param('pipeline_type', 'netflix_ml_pipeline')
+              mlflow.log_param('mlflow_tracking_uri', mlflow_tracking_uri)
+              mlflow.log_param('experiment_name', experiment_name)
+              mlflow.log_param('workflow_type', 'argo')
+              mlflow.log_param('setup_timestamp', datetime.now().isoformat())
+              mlflow.log_metric('setup_complete', 1.0)
+              
+              print(f'✓ Setup run created: {run.info.run_id}')
+              print(f'✓ Experiment URL: {mlflow_tracking_uri}/#/experiments/{experiment.experiment_id}')
+          "
+      volumeMounts:
+      - name: workdir
+        mountPath: /work
+        
+  - name: prepare-data
+    container:
+      image: python:3.9-slim
+      command: ["/bin/bash", "-c"]
+      args:
+        - |
+          # CRITICAL: Install packages in this step too!
+          pip install mlflow==2.10.0 requests pandas numpy scikit-learn psycopg2-binary
+          
+          python -c "
+          import pandas as pd
+          import numpy as np
+          import mlflow
+          import time
+          
+          # Set MLflow tracking URI
+          mlflow.set_tracking_uri('http://mlflow-service.argo.svc.cluster.local:5000')
+          mlflow.set_experiment('Netflix-Retraining-Pipeline')
+          
+          with mlflow.start_run(run_name=f'data-preparation-{int(time.time())}') as run:
+              print('Preparing Netflix dataset...')
+              
+              # Generate synthetic Netflix-like data
+              np.random.seed(42)
+              n_samples = 10000
+              
+              # Features
+              movies_watched = np.random.poisson(20, n_samples)
+              avg_rating = np.random.normal(3.5, 1.0, n_samples)
+              account_age = np.random.exponential(365, n_samples)
+              genre_preference = np.random.choice(['action', 'comedy', 'drama', 'thriller'], n_samples)
+              
+              # Target: user engagement score
+              engagement = (
+                  0.3 * movies_watched + 
+                  0.4 * avg_rating + 
+                  0.2 * np.log1p(account_age) + 
+                  np.random.normal(0, 0.5, n_samples)
+              )
+              
+              # Create DataFrame
+              df = pd.DataFrame({
+                  'movies_watched': movies_watched,
+                  'avg_rating': avg_rating,
+                  'account_age': account_age,
+                  'genre_preference': genre_preference,
+                  'engagement': engagement
+              })
+              
+              # Save data
+              df.to_csv('/work/netflix_data.csv', index=False)
+              
+              # Log data statistics
+              mlflow.log_param('data_samples', len(df))
+              mlflow.log_param('features', df.shape[1] - 1)
+              mlflow.log_param('target_column', 'engagement')
+              mlflow.log_metric('avg_engagement', df['engagement'].mean())
+              mlflow.log_metric('max_engagement', df['engagement'].max())
+              mlflow.log_metric('min_engagement', df['engagement'].min())
+              mlflow.log_metric('std_engagement', df['engagement'].std())
+              
+              # Log data quality metrics
+              mlflow.log_metric('missing_values', df.isnull().sum().sum())
+              mlflow.log_metric('duplicate_rows', df.duplicated().sum())
+              
+              print(f'✓ Data prepared: {len(df)} samples')
+              print(f'✓ Data saved to /work/netflix_data.csv')
+              print(f'✓ Run ID: {run.info.run_id}')
+          "
+      volumeMounts:
+      - name: workdir
+        mountPath: /work
+        
+  - name: train-model
+    container:
+      image: python:3.9-slim
+      command: ["/bin/bash", "-c"]
+      args:
+        - |
+          # Install packages in this step too!
+          pip install mlflow==2.10.0 requests pandas numpy scikit-learn psycopg2-binary joblib
+          
+          python -c "
+          import pandas as pd
+          import numpy as np
+          from sklearn.ensemble import RandomForestRegressor
+          from sklearn.model_selection import train_test_split
+          from sklearn.preprocessing import LabelEncoder
+          import mlflow
+          import joblib
+          import time
+          
+          # Set MLflow tracking URI
+          mlflow.set_tracking_uri('http://mlflow-service.argo.svc.cluster.local:5000')
+          mlflow.set_experiment('Netflix-Retraining-Pipeline')
+          
+          # Load data
+          df = pd.read_csv('/work/netflix_data.csv')
+          print(f'Loaded data: {df.shape}')
+          
+          # Encode categorical features
+          le = LabelEncoder()
+          df['genre_preference_encoded'] = le.fit_transform(df['genre_preference'])
+          
+          # Prepare features and target
+          X = df[['movies_watched', 'avg_rating', 'account_age', 'genre_preference_encoded']]
+          y = df['engagement']
+          
+          # Split data
+          X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+          
+          with mlflow.start_run(run_name=f'model-training-{int(time.time())}') as run:
+              # Model parameters
+              n_estimators = 100
+              max_depth = 10
+              min_samples_split = 5
+              random_state = 42
+              
+              # Log parameters
+              mlflow.log_param('model_type', 'RandomForestRegressor')
+              mlflow.log_param('n_estimators', n_estimators)
+              mlflow.log_param('max_depth', max_depth)
+              mlflow.log_param('min_samples_split', min_samples_split)
+              mlflow.log_param('random_state', random_state)
+              mlflow.log_param('train_size', len(X_train))
+              mlflow.log_param('test_size', len(X_test))
+              mlflow.log_param('total_features', X.shape[1])
+              
+              # Train model
+              print('Training Random Forest model...')
+              model = RandomForestRegressor(
+                  n_estimators=n_estimators,
+                  max_depth=max_depth,
+                  min_samples_split=min_samples_split,
+                  random_state=random_state,
+                  n_jobs=-1
+              )
+              model.fit(X_train, y_train)
+              
+              # Calculate training score
+              train_score = model.score(X_train, y_train)
+              mlflow.log_metric('train_score', train_score)
+              
+              # Log model
+              mlflow.sklearn.log_model(
+                  model, 
+                  'model',
+                  registered_model_name='netflix-engagement-predictor'
+              )
+              
+              # Save model for evaluation
+              joblib.dump(model, '/work/trained_model.pkl')
+              
+              # Log feature importance
+              feature_importance = dict(zip(X.columns, model.feature_importances_))
+              for feature, importance in feature_importance.items():
+                  mlflow.log_metric(f'feature_importance_{feature}', importance)
+              
+              print(f'✓ Model trained successfully')
+              print(f'✓ Training R²: {train_score:.4f}')
+              print(f'✓ Run ID: {run.info.run_id}')
+          "
+      volumeMounts:
+      - name: workdir
+        mountPath: /work
+        
+  - name: evaluate-model
+    container:
+      image: python:3.9-slim
+      command: ["/bin/bash", "-c"]
+      args:
+        - |
+          # Install packages in this step too!
+          pip install mlflow==2.10.0 requests pandas numpy scikit-learn joblib
+          
+          python -c "
+          import pandas as pd
+          import numpy as np
+          from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+          from sklearn.preprocessing import LabelEncoder
+          import joblib
+          import mlflow
+          import time
+          
+          # Set MLflow tracking URI
+          mlflow.set_tracking_uri('http://mlflow-service.argo.svc.cluster.local:5000')
+          mlflow.set_experiment('Netflix-Retraining-Pipeline')
+          
+          # Load data
+          df = pd.read_csv('/work/netflix_data.csv')
+          le = LabelEncoder()
+          df['genre_preference_encoded'] = le.fit_transform(df['genre_preference'])
+          X = df[['movies_watched', 'avg_rating', 'account_age', 'genre_preference_encoded']]
+          y = df['engagement']
+          
+          from sklearn.model_selection import train_test_split
+          X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+          
+          # Load model
+          model = joblib.load('/work/trained_model.pkl')
+          
+          with mlflow.start_run(run_name=f'model-evaluation-{int(time.time())}') as run:
+              # Make predictions
+              y_pred = model.predict(X_test)
+              
+              # Calculate metrics
+              mse = mean_squared_error(y_test, y_pred)
+              rmse = np.sqrt(mse)
+              r2 = r2_score(y_test, y_pred)
+              mae = mean_absolute_error(y_test, y_pred)
+              
+              # Additional metrics
+              mape = np.mean(np.abs((y_test - y_pred) / y_test)) * 100
+              
+              # Log metrics
+              mlflow.log_metric('mse', mse)
+              mlflow.log_metric('rmse', rmse)
+              mlflow.log_metric('r2_score', r2)
+              mlflow.log_metric('mae', mae)
+              mlflow.log_metric('mape', mape)
+              mlflow.log_metric('test_samples', len(y_test))
+              
+              # Log prediction statistics
+              mlflow.log_metric('pred_mean', np.mean(y_pred))
+              mlflow.log_metric('pred_std', np.std(y_pred))
+              mlflow.log_metric('pred_min', np.min(y_pred))
+              mlflow.log_metric('pred_max', np.max(y_pred))
+              
+              print(f'✓ Model evaluation complete:')
+              print(f'  RMSE: {rmse:.4f}')
+              print(f'  R² Score: {r2:.4f}')
+              print(f'  MAE: {mae:.4f}')
+              print(f'  MAPE: {mape:.2f}%')
+              print(f'  Run ID: {run.info.run_id}')
+          "
+      volumeMounts:
+      - name: workdir
+        mountPath: /work
+        
+  - name: register-model
+    container:
+      image: python:3.9-slim
+      command: ["/bin/bash", "-c"]
+      args:
+        - |
+          # Install packages in this step too!
+          pip install mlflow==2.10.0 requests
+          
+          python -c "
+          import mlflow
+          import time
+          
+          print('Registering model in MLflow...')
+          
+          # Set MLflow tracking URI
+          mlflow.set_tracking_uri('http://mlflow-service.argo.svc.cluster.local:5000')
+          
+          # Get the latest run from training
+          client = mlflow.MlflowClient()
+          experiment = client.get_experiment_by_name('Netflix-Retraining-Pipeline')
+          runs = client.search_runs(experiment.experiment_id, order_by=['start_time desc'], max_results=1)
+          
+          if runs:
+              run_id = runs[0].info.run_id
+              print(f'Found training run: {run_id}')
+              
+              with mlflow.start_run(run_id=run_id) as run:
+                  # Register the model
+                  model_uri = f'runs:/{run_id}/model'
+                  model_details = mlflow.register_model(
+                      model_uri=model_uri,
+                      name='netflix-engagement-predictor'
+                  )
+                  
+                  # Log registration details
+                  mlflow.log_param('model_name', model_details.name)
+                  mlflow.log_param('model_version', model_details.version)
+                  mlflow.log_param('model_uri', model_uri)
+                  mlflow.log_metric('registration_timestamp', float(time.time()))
+                  
+                  print(f'✓ Model registered successfully!')
+                  print(f'  Model Name: {model_details.name}')
+                  print(f'  Model Version: {model_details.version}')
+                  print(f'  Run ID: {run.info.run_id}')
+          else:
+              print('✗ No training run found')
+          "
