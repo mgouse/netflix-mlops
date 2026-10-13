@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # Configuration
-WORKFLOW_YAML = "D:/Netflix/pipelines/argo/netflix-ml-pipeline-fixed_phase10.yml"
+WORKFLOW_YAML = "D:/Netflix/pipelines/argo/netflix-ml-pipeline-fixed_phase10.yaml"
 NAMESPACE = "argo"
 
 
